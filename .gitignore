@@ -1,0 +1,8 @@
+# 忽略所有图片格式
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.tiff
+*.webp
