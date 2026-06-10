@@ -57,7 +57,7 @@ def bilinear_sample(image, x, y):
     return float(value)
 
 
-def robust_mad_threshold(values, scale=1.5):
+def robust_mad_threshold(values, scale=1.0):
     """用 MAD 估计鲁棒阈值。"""
     values = np.asarray(values, dtype=np.float32)
 
@@ -811,7 +811,7 @@ def save_8x8_patch_heatmap(
 if __name__ == "__main__":
     image_path = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
     image_path = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
-    image_path = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    # image_path = "../test_data/05.02.25#out1#mnr_input0012.bmp"
 
     results, score_grid, label_grid = predict_8x8_patches(
         image_path=image_path,
@@ -822,7 +822,7 @@ if __name__ == "__main__":
         canny_low=80,
         canny_high=160,
 
-        profile_radius=6,
+        profile_radius=4,
         profile_smooth_sigma=1.0,
 
         max_edge_points_per_patch=32,
