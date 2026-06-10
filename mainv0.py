@@ -5,16 +5,20 @@ import cv2
 # =========================================================
 # 1. Edge ROI
 # =========================================================
-def compute_edge_roi(I, edge_th_low=200, edge_th_high = 50, dilate_size=5):
+def compute_edge_roi(I, edge_th=200, dilate_size=5):
     I = I.astype(np.float32)
+    # print(I[])
+    # print(np.max(I))
 
     gx = cv2.Sobel(I, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(I, cv2.CV_32F, 0, 1, ksize=3)
+    # print("max:{}, min:{}, mean:{}" .format(np.max(abs(gx)), np.min(abs(gx)), np.mean(abs(gx))))
+    # print("max:{}, min:{}, mean:{}" .format(np.max(abs(gy)), np.min(abs(gy)), np.mean(abs(gy))))
 
     grad = np.sqrt(gx * gx + gy * gy)
+    # print(grad)
+    edge = grad > edge_th
 
-    # edge = (grad > edge_th_low) & (grad < edge_th_high)
-    edge = (grad > edge_th_low)
     kernel = np.ones((dilate_size, dilate_size), np.uint8)
     roi = cv2.dilate(edge.astype(np.uint8), kernel)
 
@@ -59,7 +63,7 @@ def patch_similarity_map(I):
 
     sim = np.zeros_like(I)
 
-    shifts = [(2, 0), (-2, 0), (0, 2), (0, -2)]
+    shifts = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
     for dx, dy in shifts:
         shifted = np.roll(I, shift=(dy, dx), axis=(0, 1))
@@ -73,29 +77,27 @@ def patch_similarity_map(I):
 # =========================================================
 # 5. Coherence（局部窗口）
 # =========================================================
-def coherence_map(I, hf_th=5, win_size=15):
-    """
-    极简的高频能量密度计算，用于保护树叶和密集树枝
-    """
+def coherence_map(I, win_size=5):
     I = I.astype(np.float32)
 
-    # 1. 提取细尺度高频 (和你之前的 high_freq_map 一样)
-    blur = cv2.GaussianBlur(I, (3, 3), 0.8)
-    hf = np.abs(I - blur)
+    Ix = cv2.Sobel(I, cv2.CV_32F, 1, 0, ksize=3)
+    Iy = cv2.Sobel(I, cv2.CV_32F, 0, 1, ksize=3)
 
-    # 2. 核心：计算高频像素的“空间密度”
-    # 先二值化：找出所有算是“高频”的点
-    hf_binary = (hf > hf_th).astype(np.float32)
+    Jxx = cv2.boxFilter(Ix * Ix, -1, (win_size, win_size))
+    Jyy = cv2.boxFilter(Iy * Iy, -1, (win_size, win_size))
+    Jxy = cv2.boxFilter(Ix * Iy, -1, (win_size, win_size))
 
-    # 用一个较大的窗口（粗尺度）扫过图像，计算窗口内高频点的平均浓度
-    # boxFilter 计算的是窗口内元素的平均值，相当于求密度
-    density = cv2.boxFilter(hf_binary, -1, (win_size, win_size))
+    trace = Jxx + Jyy
+    det = Jxx * Jyy - Jxy * Jxy
 
-    # 3. 判定：如果一个区域的密度大于某个阈值（比如 20% 的面积都是高频），就是树叶
-    # 这个掩码就是“免死金牌”
-    leaf_protect_mask = (density > 0.20).astype(np.float32)
+    temp = np.sqrt(np.maximum(trace * trace - 4 * det, 0))
 
-    return leaf_protect_mask
+    l1 = (trace + temp) / 2
+    l2 = (trace - temp) / 2
+
+    coh = (l1 - l2) / (l1 + l2 + 1e-6)
+
+    return coh
 
 
 # =========================================================
@@ -116,7 +118,8 @@ def mosquito_score(I):
     # =====================================================
 
     # 高频条件（8bit建议）
-    hf_mask = (hf > 20).astype(np.float32)
+    # hf_mask = (hf > 5).astype(np.float32)
+    hf_mask = (hf > 10).astype(np.float32)
 
     # multi-scale（小 → 噪声）
     ms_mask = (ms < 0.3).astype(np.float32)
@@ -161,7 +164,7 @@ def mosquito_mask(I, th=0.5):
 # =========================================================
 if __name__ == "__main__":
     # img = cv2.imread("test_data/001_OnlineNews#out1#mnr_input0007.bmp", cv2.IMREAD_GRAYSCALE)
-    img = cv2.imread("test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp", cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread("test_data/05.02.25#out1#mnr_input0012.bmp", cv2.IMREAD_GRAYSCALE)
 
     mask = mosquito_mask(img)
 
