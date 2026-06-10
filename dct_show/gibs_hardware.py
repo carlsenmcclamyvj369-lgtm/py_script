@@ -4,21 +4,19 @@ from scipy.ndimage import map_coordinates
 
 
 def numpy_vectorized_predict_with_decay(
-        image_path, patch_size=8, stride=8, noise_floor=1.5, profile_radius=5
+        image_path, patch_size=3, stride=4, noise_floor=1.8, profile_radius=3
 ):
     # ==========================================
-    # 1. 基础图像与梯度计算
+    # 1. 基础图像计算 (同前)
     # ==========================================
     img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Cannot read image")
+    if img is None: raise ValueError("Cannot read image")
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
     H, W = gray.shape
 
-    edges = cv2.Canny(gray.astype(np.uint8), 30, 80)  # 降低阈值，捕捉微弱的马赛克边缘
+    edges = cv2.Canny(gray.astype(np.uint8), 50, 90)
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
-    grad_mag = np.sqrt(gx ** 2 + gy ** 2)
 
     blur = cv2.GaussianBlur(gray, ksize=(0, 0), sigmaX=1.0)
     residual = gray - blur
@@ -27,12 +25,11 @@ def numpy_vectorized_predict_with_decay(
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     edge_band = cv2.dilate(edges, kernel, iterations=1) > 0
     edge_pixels = edges > 0
-
     edge_neighbor_f = (edge_band & (~edge_pixels)).astype(np.float32)
     non_edge_f = (~edge_band).astype(np.float32)
 
     # ==========================================
-    # 2. 边缘局部性 (loc_ratio) - 全局滑窗
+    # 2. 边缘局部性 (loc_ratio) (同前)
     # ==========================================
     ctx_k = patch_size + 2 * profile_radius
     sum_neighbor = cv2.boxFilter(abs_residual * edge_neighbor_f, -1, (ctx_k, ctx_k), normalize=False)
@@ -45,23 +42,61 @@ def numpy_vectorized_predict_with_decay(
     loc_ratio_full = mean_neighbor / mean_non_edge
 
     # ==========================================
-    # 3. 法线采点与特征计算 (Crossings & Decay)
+    # 3. 终极性能：整数方向量化 + 矩阵平移获取 Profile
     # ==========================================
+    # 找出边缘点并确保梯度不是 0
     ey, ex = np.where(edges > 0)
-    valid_mask = grad_mag[ey, ex] > 1e-6
+    abs_gx, abs_gy = np.abs(gx[ey, ex]), np.abs(gy[ey, ex])
+    valid_mask = (abs_gx + abs_gy) > 1e-6
     ey, ex = ey[valid_mask], ex[valid_mask]
+    abs_gx, abs_gy = abs_gx[valid_mask], abs_gy[valid_mask]
 
-    N = len(ey)  # N个边缘点
-    mag = grad_mag[ey, ex]
-    nx = gx[ey, ex] / mag
-    ny = gy[ey, ex] / mag
+    N = len(ey)
+    # 量化为 4 条通道 (0: 水平, 1: 垂直, 2: 主对角线, 3: 副对角线)
+    directions = np.zeros(N, dtype=np.int8)
+    gx_val, gy_val = gx[ey, ex], gy[ey, ex]
 
-    t = np.arange(-profile_radius, profile_radius + 1)  # shape: (11,) 假设 radius=5
-    samp_x = ex[:, None] + nx[:, None] * t[None, :]  # shape: (N, 11)
-    samp_y = ey[:, None] + ny[:, None] * t[None, :]
+    # 根据梯度绝对值大小分配方向 (方向与梯度同向，即垂直于边缘)
+    # 为了简化计算，我们统一规定 dx, dy。正负无所谓，因为是向两侧双向延伸。
+    is_horiz = abs_gx > 2 * abs_gy
+    is_vert = abs_gy > 2 * abs_gx
+    is_diag1 = (~is_horiz) & (~is_vert) & (np.sign(gx_val) == np.sign(gy_val)) # 梯度方向：左上到右下 -> 法线也是
+    is_diag2 = (~is_horiz) & (~is_vert) & (np.sign(gx_val) != np.sign(gy_val)) # 梯度方向：左下到右上 -> 法线也是
 
-    # 瞬间提取几万条法线 Profile (N, 11)
-    profiles = map_coordinates(residual, [samp_y, samp_x], order=1, mode='constant', cval=0.0)
+    directions[is_horiz] = 0
+    directions[is_vert] = 1
+    directions[is_diag1] = 2
+    directions[is_diag2] = 3
+
+    # 定义 4 条通道的步长向量 (dy, dx)
+    steps = [
+        (0, 1),   # 0: 水平延伸
+        (1, 0),   # 1: 垂直延伸
+        (1, 1),   # 2: 主对角线延伸
+        (-1, 1)   # 3: 副对角线延伸
+    ]
+
+    # 瞬间提取几万条法线 Profile (N, 2*radius+1)
+    # 我们用高级索引结合整数加法，0 浮点运算
+    t = np.arange(-profile_radius, profile_radius + 1) # e.g. [-5, ..., 5]
+    L = len(t)
+
+    # 为每种方向预先算好坐标偏移，形状 (L, 2)
+    offsets = np.array([[dy * t, dx * t] for dy, dx in steps]) # shape: (4, 2, 11)
+
+    # 利用 N 个点各自的方向，取出它们应得的偏移量
+    selected_offsets = offsets[directions] # shape: (N, 2, 11)
+
+    # 加上中心点坐标，得到绝对整数坐标
+    samp_y = ey[:, None] + selected_offsets[:, 0, :] # shape: (N, 11)
+    samp_x = ex[:, None] + selected_offsets[:, 1, :]
+
+    # 越界保护 (夹逼到图像边缘)
+    np.clip(samp_y, 0, H - 1, out=samp_y)
+    np.clip(samp_x, 0, W - 1, out=samp_x)
+
+    # 【绝对极限极速】整数索引直接扣取像素，零插值开销！
+    profiles = residual[samp_y, samp_x]
     abs_profiles = np.abs(profiles)
 
     # --- 特征 A：极速计算零交叉 (Crossings) ---
@@ -75,39 +110,26 @@ def numpy_vectorized_predict_with_decay(
     row_indices = np.arange(N)[:, None]
     filled_signs = signs[row_indices, idx]
 
-    valid_crossings = (filled_signs[:, :-1] != filled_signs[:, 1:]) & (filled_signs[:, :-1] != 0) & (
-                filled_signs[:, 1:] != 0)
-    crossings = np.sum(valid_crossings, axis=1)  # shape: (N,)
+    valid_crossings = (filled_signs[:, :-1] != filled_signs[:, 1:]) & (filled_signs[:, :-1] != 0) & (filled_signs[:, 1:] != 0)
+    crossings = np.sum(valid_crossings, axis=1) # shape: (N,)
 
     # --- 特征 B：纯向量化计算衰减 (Decay) ---
-    # 定义距离数组 d: [5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5]
     d = np.abs(t)
+    near_mask, mid_mask, far_mask = (d == 1), ((d >= 2) & (d <= 3)), (d >= 4)
 
-    near_mask = (d == 1)
-    mid_mask = (d >= 2) & (d <= 3)
-    far_mask = (d >= 4)
-
-    # 计算近、中、远三端的平均残差能量
     near_e = np.mean(abs_profiles[:, near_mask], axis=1) if np.any(near_mask) else np.zeros(N)
     mid_e = np.mean(abs_profiles[:, mid_mask], axis=1) if np.any(mid_mask) else np.zeros(N)
     far_e = np.mean(abs_profiles[:, far_mask], axis=1) if np.any(far_mask) else np.zeros(N)
 
-    # B1: 单调衰减分 (0 到 1)
     mono_score = 0.0 + 0.5 * (near_e > mid_e) + 0.5 * (mid_e > far_e)
-
-    # B2: 衰减紧凑度 (能量是否集中在近端)
     weighted_dist = np.sum(abs_profiles * d, axis=1) / (np.sum(abs_profiles, axis=1) + 1e-6)
     compactness = 1.0 / (1.0 + weighted_dist)
+    ratio_score = np.tanh((near_e / (far_e + 1e-6)) / 3.0)
 
-    # B3: 远近能量比
-    ratio = near_e / (far_e + 1e-6)
-    ratio_score = np.tanh(ratio / 3.0)
-
-    # 综合衰减得分 (N,)
     decay_scores = 0.4 * mono_score + 0.3 * compactness + 0.3 * ratio_score
 
     # ==========================================
-    # 4. 聚合回 8x8 Patch 网格
+    # 4. 聚合与判决 (同前)
     # ==========================================
     num_rows = (H - patch_size) // stride + 1
     num_cols = (W - patch_size) // stride + 1
@@ -124,7 +146,6 @@ def numpy_vectorized_predict_with_decay(
     grid_decay_sum = np.zeros((num_rows, num_cols), dtype=np.float32)
     grid_valid_count = np.zeros((num_rows, num_cols), dtype=np.float32)
 
-    # 散列累加所有特征
     np.add.at(grid_crossings_sum, (patch_idx_y, patch_idx_x), crossings)
     np.add.at(grid_decay_sum, (patch_idx_y, patch_idx_x), decay_scores)
     np.add.at(grid_valid_count, (patch_idx_y, patch_idx_x), 1)
@@ -132,19 +153,9 @@ def numpy_vectorized_predict_with_decay(
     grid_mean_crossings = grid_crossings_sum / np.maximum(grid_valid_count, 1.0)
     grid_mean_decay = grid_decay_sum / np.maximum(grid_valid_count, 1.0)
 
-    # ==========================================
-    # 5. 最终矩阵判决 (综合三个维度)
-    # ==========================================
     score_grid = np.zeros((num_rows, num_cols), dtype=np.float32)
-
-    # 门槛设定：由于严重的 JPEG 块效应不会“完美衰减”，把 decay 及格线设为 0.15~0.2 左右
-    mask = (grid_loc_ratio > 1.2) & (grid_mean_crossings > 0.8) & (grid_mean_decay > 0.2)
-
-    # 得分组合
-    # score_grid[mask] = grid_loc_ratio[mask] * grid_mean_crossings[mask] * grid_mean_decay[mask]
-    score_grid[mask] = grid_loc_ratio[mask] + grid_mean_crossings[mask] + grid_mean_decay[mask]
-    score_grid[mask] = grid_mean_crossings[mask] * grid_mean_decay[mask]
-    score_grid[mask] = grid_mean_decay[mask]
+    mask = (grid_loc_ratio > 2) & (grid_mean_crossings > 1.3) & (grid_mean_decay > 0.7)
+    score_grid[mask] = grid_loc_ratio[mask] * grid_mean_crossings[mask] * grid_mean_decay[mask]
 
     return score_grid, img
 
@@ -158,20 +169,21 @@ def save_heatmap(img, score_grid, output_path="final_vectorized_heatmap.png"):
     # else:
     #     score_norm = np.zeros_like(score)
 
-    score_u8 = np.clip(score_norm * 255, 0, 255).astype(np.uint8)
+    score_u8 = np.clip(score_norm * 25, 0, 255).astype(np.uint8)
     heatmap_small = cv2.applyColorMap(score_u8, cv2.COLORMAP_JET)
     heatmap = cv2.resize(heatmap_small, (W, H), interpolation=cv2.INTER_NEAREST)
 
     overlay = cv2.addWeighted(img, 0.6, heatmap, 0.4, 0)
     cv2.imwrite(output_path, overlay)
-
+    cv2.imshow("heat_map", overlay)
+    cv2.waitKey()
 
 if __name__ == "__main__":
-    # test_img = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
+    test_img = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
     # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
-    test_img = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
-    test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
-    test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
-
+    # test_img = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
+    # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    score_grid, img = numpy_vectorized_predict_with_decay(test_img)
     save_heatmap(img, score_grid)
     print("矩阵化计算完成！包含了 decay 特征。")
