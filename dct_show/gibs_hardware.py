@@ -13,7 +13,7 @@ def robust_mad_threshold(values, scale=1.0):
 
 
 def numpy_vectorized_predict_with_decay(
-        image_path, patch_size=3, stride=8, profile_radius=3, scale=1.0
+        image_path, patch_size=5, stride=5, profile_radius=4, scale=1.0
 ):
     # ==========================================
     # 1. 基础图像计算 (同前)
@@ -23,9 +23,15 @@ def numpy_vectorized_predict_with_decay(
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
     H, W = gray.shape
 
-    edges = cv2.Canny(gray.astype(np.uint8), 50, 90)
+    edges = cv2.Canny(gray.astype(np.uint8), 100, 200)
+    # cv2.imshow("edges", edges)
+    # cv2.waitKey(0)
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+    # cv2.imshow("gx", gx)
+    # cv2.waitKey(0)
+    # cv2.imshow("gy", abs(gy/20))
+    # cv2.waitKey(0)
 
     blur = cv2.GaussianBlur(gray, ksize=(0, 0), sigmaX=1.0)
     residual = gray - blur
@@ -49,6 +55,7 @@ def numpy_vectorized_predict_with_decay(
     mean_neighbor = sum_neighbor / np.maximum(count_neighbor, 1.0)
     mean_non_edge = sum_non_edge / np.maximum(count_non_edge, 1e-6)
     loc_ratio_full = mean_neighbor / mean_non_edge
+
 
     # ==========================================
     # 3. 终极性能：整数方向量化 + 矩阵平移获取 Profile
@@ -108,13 +115,22 @@ def numpy_vectorized_predict_with_decay(
     profiles = residual[samp_y, samp_x]
     abs_profiles = np.abs(profiles)
 
+    # 提前算 gray profile 的阶跃高度，供两个特征使用
+    profiles_gray = gray[samp_y, samp_x]
+    prof_2d = profiles_gray.reshape(N, 1, L)
+    smooth_2d = cv2.GaussianBlur(prof_2d, ksize=(0, 0), sigmaX=1.0)
+    smooth_profiles = smooth_2d.reshape(N, L)
+    edge_step = np.max(smooth_profiles, axis=1) - np.min(smooth_profiles, axis=1)  # (N,)
+
     # --- 特征 A：极速计算零交叉 (Crossings) ---
-    # 每条 profile 独立 mean 阈值
-    prof_thresh = scale * np.mean(abs_profiles, axis=1, keepdims=True)  # shape (N, 1)
+    # Gibbs 振铃幅值在阶跃的 2%~20% 之间
+    low_th = (0.005 * edge_step)[:, None]
+    high_th = (0.15 * edge_step)[:, None]
 
     signs = np.zeros_like(profiles, dtype=np.int8)
-    signs[profiles > prof_thresh] = 1
-    signs[profiles < -prof_thresh] = -1
+    valid_a = (np.abs(profiles) > low_th) & (np.abs(profiles) < high_th)
+    signs[valid_a & (profiles > 0)] = 1
+    signs[valid_a & (profiles < 0)] = -1
 
     mask_signs = (signs != 0)
     idx = np.where(mask_signs, np.arange(signs.shape[1]), 0)
@@ -140,23 +156,16 @@ def numpy_vectorized_predict_with_decay(
 
     decay_scores = 0.4 * mono_score + 0.3 * compactness + 0.3 * ratio_score
 
-    # --- 特征 C: Gibbs-like profile score (jibs.py 风格) ---
-    # 从 gray 扣取 profile，每条独立高斯平滑后算残差
-    profiles_gray = gray[samp_y, samp_x]  # (N, 7)
-    prof_2d = profiles_gray.reshape(N, 1, L)
-    smooth_2d = cv2.GaussianBlur(prof_2d, ksize=(0, 0), sigmaX=1.0)
-    prof_residual = profiles_gray - smooth_2d.reshape(N, L)  # profile-level residual
+    # --- 特征 C: Gibbs-like profile score ---
+    prof_residual = profiles_gray - smooth_profiles  # profile-level residual
     abs_prof_res = np.abs(prof_residual)
-
-    # residual_energy
     residual_energy = np.mean(abs_prof_res, axis=1)  # (N,)
 
-    # oscillation 阈值 (profile residual 的 mean)
-    osc_thresh = scale * np.mean(abs_prof_res, axis=1, keepdims=True)
-
+    # 同样用 2%~20% 阶跃阈值判断振荡
     osc_signs = np.zeros_like(prof_residual, dtype=np.int8)
-    osc_signs[prof_residual > osc_thresh] = 1
-    osc_signs[prof_residual < -osc_thresh] = -1
+    valid_osc = (abs_prof_res > low_th) & (abs_prof_res < high_th)
+    osc_signs[valid_osc & (prof_residual > 0)] = 1
+    osc_signs[valid_osc & (prof_residual < 0)] = -1
 
     # sign_alternation_score（简洁版 oscillation）
     mask_osc = osc_signs != 0
@@ -171,7 +180,7 @@ def numpy_vectorized_predict_with_decay(
     # decay from profile residual（简洁版：只用近远能量比）
     near_g = np.mean(abs_prof_res[:, near_mask], axis=1) if np.any(near_mask) else np.zeros(N)
     far_g = np.mean(abs_prof_res[:, far_mask], axis=1) if np.any(far_mask) else np.zeros(N)
-    decay_from_prof = np.tanh((near_g / (far_g + 1e-6)) / 3.0)
+    decay_from_prof = np.tanh((far_g / (near_g + 1e-6)) / 3.0)
 
     # gibbs_profile_score per edge point
     gibbs_scores = residual_energy * oscillation_score * decay_from_prof
@@ -214,10 +223,10 @@ def numpy_vectorized_predict_with_decay(
     grid_gibbs_p90 = np.zeros((num_rows, num_cols), dtype=np.float32)
     for s, e in zip(starts, ends):
         py, px = sorted_py[s], sorted_px[s]
-        grid_gibbs_p90[py, px] = np.percentile(sorted_gibbs[s:e], 80)
+        grid_gibbs_p90[py, px] = np.percentile(sorted_gibbs[s:e], 70)
 
     score_grid = np.zeros((num_rows, num_cols), dtype=np.float32)
-    mask = (grid_loc_ratio > 1.5) & (grid_mean_crossings > 0.9) & (grid_mean_decay > 0.2) & (grid_gibbs_p90 > 5)
+    mask = (grid_loc_ratio > 1.5) & (grid_loc_ratio < 20) & (grid_mean_crossings > 0.7) & (grid_mean_decay < 0.88) & (grid_gibbs_p90 > 2)
     score_grid[mask] = grid_gibbs_p90[mask]
 
     return score_grid, img, grid_gibbs_p90
@@ -232,7 +241,7 @@ def save_heatmap(img, score_grid, output_path="final_vectorized_heatmap.png"):
     # else:
     #     score_norm = np.zeros_like(score)
 
-    score_u8 = np.clip(score_norm * 25, 0, 255).astype(np.uint8)
+    score_u8 = np.clip(score_norm * 40, 0, 255).astype(np.uint8)
     heatmap_small = cv2.applyColorMap(score_u8, cv2.COLORMAP_JET)
     heatmap = cv2.resize(heatmap_small, (W, H), interpolation=cv2.INTER_NEAREST)
 
@@ -244,8 +253,9 @@ def save_heatmap(img, score_grid, output_path="final_vectorized_heatmap.png"):
 if __name__ == "__main__":
     # test_img = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
     # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
-    # test_img = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
-    test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    test_img = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
+    test_img = "../test_data/Input_1080p_image_003#out1#mnr_input0007.bmp"
+    # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
     # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
     score_grid, img, grid_gibbs_p90 = numpy_vectorized_predict_with_decay(test_img)
     save_heatmap(img, score_grid)

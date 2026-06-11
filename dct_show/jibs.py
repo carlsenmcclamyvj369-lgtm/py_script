@@ -812,6 +812,7 @@ if __name__ == "__main__":
     image_path = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
     image_path = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
     image_path = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    image_path = "../test_data/Input_1080p_image_003#out1#mnr_input0007.bmp"
 
     results, score_grid, label_grid = predict_8x8_patches(
         image_path=image_path,
