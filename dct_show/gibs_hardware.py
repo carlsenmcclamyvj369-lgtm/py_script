@@ -13,7 +13,7 @@ def robust_mad_threshold(values, scale=1.0):
 
 
 def numpy_vectorized_predict_with_decay(
-        image_path, patch_size=3, stride=4, profile_radius=3, scale=1.0
+        image_path, patch_size=3, stride=8, profile_radius=3, scale=1.0
 ):
     # ==========================================
     # 1. 基础图像计算 (同前)
@@ -140,6 +140,42 @@ def numpy_vectorized_predict_with_decay(
 
     decay_scores = 0.4 * mono_score + 0.3 * compactness + 0.3 * ratio_score
 
+    # --- 特征 C: Gibbs-like profile score (jibs.py 风格) ---
+    # 从 gray 扣取 profile，每条独立高斯平滑后算残差
+    profiles_gray = gray[samp_y, samp_x]  # (N, 7)
+    prof_2d = profiles_gray.reshape(N, 1, L)
+    smooth_2d = cv2.GaussianBlur(prof_2d, ksize=(0, 0), sigmaX=1.0)
+    prof_residual = profiles_gray - smooth_2d.reshape(N, L)  # profile-level residual
+    abs_prof_res = np.abs(prof_residual)
+
+    # residual_energy
+    residual_energy = np.mean(abs_prof_res, axis=1)  # (N,)
+
+    # oscillation 阈值 (profile residual 的 mean)
+    osc_thresh = scale * np.mean(abs_prof_res, axis=1, keepdims=True)
+
+    osc_signs = np.zeros_like(prof_residual, dtype=np.int8)
+    osc_signs[prof_residual > osc_thresh] = 1
+    osc_signs[prof_residual < -osc_thresh] = -1
+
+    # sign_alternation_score（简洁版 oscillation）
+    mask_osc = osc_signs != 0
+    idx_osc = np.where(mask_osc, np.arange(L), 0)
+    np.maximum.accumulate(idx_osc, axis=1, out=idx_osc)
+    filled_osc = osc_signs[row_indices, idx_osc]
+    valid_adj = mask_osc[:, 1:]
+    alt = (filled_osc[:, :-1] != filled_osc[:, 1:]) & valid_adj
+    total_pairs = np.sum(valid_adj, axis=1).astype(np.float32)
+    oscillation_score = np.divide(np.sum(alt, axis=1), total_pairs, out=np.zeros(N), where=total_pairs > 0)
+
+    # decay from profile residual（简洁版：只用近远能量比）
+    near_g = np.mean(abs_prof_res[:, near_mask], axis=1) if np.any(near_mask) else np.zeros(N)
+    far_g = np.mean(abs_prof_res[:, far_mask], axis=1) if np.any(far_mask) else np.zeros(N)
+    decay_from_prof = np.tanh((near_g / (far_g + 1e-6)) / 3.0)
+
+    # gibbs_profile_score per edge point
+    gibbs_scores = residual_energy * oscillation_score * decay_from_prof
+
     # ==========================================
     # 4. 聚合与判决 (同前)
     # ==========================================
@@ -165,11 +201,26 @@ def numpy_vectorized_predict_with_decay(
     grid_mean_crossings = grid_crossings_sum / np.maximum(grid_valid_count, 1.0)
     grid_mean_decay = grid_decay_sum / np.maximum(grid_valid_count, 1.0)
 
-    score_grid = np.zeros((num_rows, num_cols), dtype=np.float32)
-    mask = (grid_loc_ratio > 2) & (grid_mean_crossings > 0.8) & (grid_mean_decay > 0.2)
-    score_grid[mask] = grid_loc_ratio[mask] * grid_mean_crossings[mask] * grid_mean_decay[mask]
+    # p90 gibbs per patch
+    order = np.lexsort((patch_idx_x, patch_idx_y))
+    sorted_gibbs = gibbs_scores[order]
+    sorted_py = patch_idx_y[order]
+    sorted_px = patch_idx_x[order]
+    change = (np.diff(sorted_py) != 0) | (np.diff(sorted_px) != 0)
+    bounds = np.where(change)[0] + 1
+    starts = np.concatenate([[0], bounds])
+    ends = np.concatenate([bounds, [len(sorted_gibbs)]])
 
-    return score_grid, img
+    grid_gibbs_p90 = np.zeros((num_rows, num_cols), dtype=np.float32)
+    for s, e in zip(starts, ends):
+        py, px = sorted_py[s], sorted_px[s]
+        grid_gibbs_p90[py, px] = np.percentile(sorted_gibbs[s:e], 80)
+
+    score_grid = np.zeros((num_rows, num_cols), dtype=np.float32)
+    mask = (grid_loc_ratio > 1.5) & (grid_mean_crossings > 0.9) & (grid_mean_decay > 0.2) & (grid_gibbs_p90 > 5)
+    score_grid[mask] = grid_gibbs_p90[mask]
+
+    return score_grid, img, grid_gibbs_p90
 
 
 def save_heatmap(img, score_grid, output_path="final_vectorized_heatmap.png"):
@@ -192,10 +243,10 @@ def save_heatmap(img, score_grid, output_path="final_vectorized_heatmap.png"):
 
 if __name__ == "__main__":
     # test_img = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
-    test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
     # test_img = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
+    test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
     # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
-    # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
-    score_grid, img = numpy_vectorized_predict_with_decay(test_img)
+    score_grid, img, grid_gibbs_p90 = numpy_vectorized_predict_with_decay(test_img)
     save_heatmap(img, score_grid)
-    print("矩阵化计算完成！包含了 decay 特征。")
+    print(f"矩阵化计算完成！p90_gibbs 范围: {grid_gibbs_p90[grid_gibbs_p90 > 0].min():.4f} ~ {grid_gibbs_p90.max():.4f}")

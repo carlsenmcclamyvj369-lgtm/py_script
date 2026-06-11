@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from pathlib import Path
-from scipy.ndimage import map_coordinates
 
 
 def robust_mad_threshold(values, scale=1.0):
@@ -14,7 +13,7 @@ def robust_mad_threshold(values, scale=1.0):
 
 
 def numpy_vectorized_predict_with_decay(
-        image_path, patch_size=8, stride=8, profile_radius=5, scale=1.0
+        image_path, patch_size=3, stride=8, profile_radius=3, scale=1.0
 ):
     # ==========================================
     # 1. 基础图像与梯度计算
@@ -25,7 +24,7 @@ def numpy_vectorized_predict_with_decay(
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
     H, W = gray.shape
 
-    edges = cv2.Canny(gray.astype(np.uint8), 30, 80)
+    edges = cv2.Canny(gray.astype(np.uint8), 50, 90)
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
     grad_mag = np.sqrt(gx ** 2 + gy ** 2)
@@ -55,22 +54,48 @@ def numpy_vectorized_predict_with_decay(
     loc_ratio_full = mean_neighbor / mean_non_edge
 
     # ==========================================
-    # 3. 法线采点与特征计算 (Crossings & Decay)
+    # 3. 终极性能：整数方向量化 + 矩阵平移获取 Profile
     # ==========================================
     ey, ex = np.where(edges > 0)
-    valid_mask = grad_mag[ey, ex] > 1e-6
+    abs_gx, abs_gy = np.abs(gx[ey, ex]), np.abs(gy[ey, ex])
+    valid_mask = (abs_gx + abs_gy) > 1e-6
     ey, ex = ey[valid_mask], ex[valid_mask]
+    abs_gx, abs_gy = abs_gx[valid_mask], abs_gy[valid_mask]
 
     N = len(ey)
-    mag = grad_mag[ey, ex]
-    nx = gx[ey, ex] / mag
-    ny = gy[ey, ex] / mag
+    directions = np.zeros(N, dtype=np.int8)
+    gx_val, gy_val = gx[ey, ex], gy[ey, ex]
+
+    is_horiz = abs_gx > 2 * abs_gy
+    is_vert  = abs_gy > 2 * abs_gx
+    is_diag1 = (~is_horiz) & (~is_vert) & (np.sign(gx_val) == np.sign(gy_val))
+    is_diag2 = (~is_horiz) & (~is_vert) & (np.sign(gx_val) != np.sign(gy_val))
+
+    directions[is_horiz] = 0
+    directions[is_vert]  = 1
+    directions[is_diag1] = 2
+    directions[is_diag2] = 3
+
+    steps = [
+        (0, 1),   # 0: 水平延伸
+        (1, 0),   # 1: 垂直延伸
+        (1, 1),   # 2: 主对角线延伸
+        (-1, 1)   # 3: 副对角线延伸
+    ]
 
     t = np.arange(-profile_radius, profile_radius + 1)
-    samp_x = ex[:, None] + nx[:, None] * t[None, :]
-    samp_y = ey[:, None] + ny[:, None] * t[None, :]
+    L = len(t)
 
-    profiles = map_coordinates(residual, [samp_y, samp_x], order=1, mode='constant', cval=0.0)
+    offsets = np.array([[dy * t, dx * t] for dy, dx in steps])
+    selected_offsets = offsets[directions]
+
+    samp_y = ey[:, None] + selected_offsets[:, 0, :]
+    samp_x = ex[:, None] + selected_offsets[:, 1, :]
+
+    np.clip(samp_y, 0, H - 1, out=samp_y)
+    np.clip(samp_x, 0, W - 1, out=samp_x)
+
+    profiles = residual[samp_y, samp_x]
     abs_profiles = np.abs(profiles)
 
     # --- 特征 A: 零交叉 (Crossings) ---
@@ -112,6 +137,39 @@ def numpy_vectorized_predict_with_decay(
 
     decay_scores = 0.4 * mono_score + 0.3 * compactness + 0.3 * ratio_score
 
+    # --- 特征 C: Gibbs-like profile score ---
+    # 从 gray 扣取 profile，每条独立高斯平滑后算残差
+    profiles_gray = gray[samp_y, samp_x]  # (N, 7)
+    L = len(t)
+    prof_2d = profiles_gray.reshape(N, 1, L)
+    smooth_2d = cv2.GaussianBlur(prof_2d, ksize=(0, 0), sigmaX=1.0)
+    prof_residual = profiles_gray - smooth_2d.reshape(N, L)
+    abs_prof_res = np.abs(prof_residual)
+
+    residual_energy = np.mean(abs_prof_res, axis=1)
+
+    osc_thresh = scale * np.mean(abs_prof_res, axis=1, keepdims=True)
+    osc_signs = np.zeros_like(prof_residual, dtype=np.int8)
+    osc_signs[prof_residual > osc_thresh] = 1
+    osc_signs[prof_residual < -osc_thresh] = -1
+
+    # sign_alternation_score（简洁版 oscillation）
+    mask_osc = osc_signs != 0
+    idx_osc = np.where(mask_osc, np.arange(L), 0)
+    np.maximum.accumulate(idx_osc, axis=1, out=idx_osc)
+    filled_osc = osc_signs[row_indices, idx_osc]
+    valid_adj = mask_osc[:, 1:]
+    alt = (filled_osc[:, :-1] != filled_osc[:, 1:]) & valid_adj
+    total_pairs = np.sum(valid_adj, axis=1).astype(np.float32)
+    oscillation_score = np.divide(np.sum(alt, axis=1), total_pairs, out=np.zeros(N), where=total_pairs > 0)
+
+    # decay from profile residual（简洁版：只用近远能量比）
+    near_g = np.mean(abs_prof_res[:, near_mask], axis=1) if np.any(near_mask) else np.zeros(N)
+    far_g = np.mean(abs_prof_res[:, far_mask], axis=1) if np.any(far_mask) else np.zeros(N)
+    decay_from_prof = np.tanh((near_g / (far_g + 1e-6)) / 3.0)
+
+    gibbs_scores = residual_energy * oscillation_score * decay_from_prof
+
     # ==========================================
     # 4. 聚合回 8x8 Patch 网格
     # ==========================================
@@ -137,15 +195,27 @@ def numpy_vectorized_predict_with_decay(
     grid_mean_crossings = grid_crossings_sum / np.maximum(grid_valid_count, 1.0)
     grid_mean_decay = grid_decay_sum / np.maximum(grid_valid_count, 1.0)
 
-    # ==========================================
-    # 5. 最终矩阵判决
-    # ==========================================
+    # p90 gibbs per patch
+    order = np.lexsort((patch_idx_x, patch_idx_y))
+    sorted_gibbs = gibbs_scores[order]
+    sorted_py = patch_idx_y[order]
+    sorted_px = patch_idx_x[order]
+    change = (np.diff(sorted_py) != 0) | (np.diff(sorted_px) != 0)
+    bounds = np.where(change)[0] + 1
+    starts = np.concatenate([[0], bounds])
+    ends = np.concatenate([bounds, [len(sorted_gibbs)]])
+
+    grid_gibbs_p90 = np.zeros((num_rows, num_cols), dtype=np.float32)
+    for s, e in zip(starts, ends):
+        py, px = sorted_py[s], sorted_px[s]
+        grid_gibbs_p90[py, px] = np.percentile(sorted_gibbs[s:e], 80)
+
     score_grid = np.zeros((num_rows, num_cols), dtype=np.float32)
 
-    mask = (grid_loc_ratio > 1.2) & (grid_mean_crossings > 1.5) & (grid_mean_decay > 0.5)
-    score_grid[mask] = grid_loc_ratio[mask] * grid_mean_crossings[mask] * grid_mean_decay[mask]
+    mask = (grid_loc_ratio > 1.5) & (grid_mean_crossings > 0.9) & (grid_mean_decay > 0.2) & (grid_gibbs_p90 > 5)
+    score_grid[mask] = grid_gibbs_p90[mask]
 
-    return score_grid, img
+    return score_grid, img, grid_gibbs_p90
 
 
 def save_heatmap(img, score_grid, output_path):
@@ -175,7 +245,7 @@ def main():
     for bmp_path in bmp_files:
         stem = bmp_path.stem  # 不含后缀的文件名
         try:
-            score_grid, img = numpy_vectorized_predict_with_decay(str(bmp_path))
+            score_grid, img, grid_gibbs_p90 = numpy_vectorized_predict_with_decay(str(bmp_path))
 
             # 保存热力图
             heatmap_path = output_dir / f"{stem}.png"
