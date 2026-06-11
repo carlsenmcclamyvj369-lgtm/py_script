@@ -3,8 +3,17 @@ import numpy as np
 from scipy.ndimage import map_coordinates
 
 
+def robust_mad_threshold(values, scale=1.0):
+    """用 MAD 估计鲁棒阈值。"""
+    values = np.asarray(values, dtype=np.float32)
+    med = np.median(values)
+    mad = np.median(np.abs(values - med)) + 1e-6
+    threshold = scale * 1.4826 * mad
+    return float(threshold)
+
+
 def numpy_vectorized_predict_with_decay(
-        image_path, patch_size=3, stride=4, noise_floor=1.8, profile_radius=3
+        image_path, patch_size=3, stride=4, profile_radius=3, scale=1.0
 ):
     # ==========================================
     # 1. 基础图像计算 (同前)
@@ -100,9 +109,12 @@ def numpy_vectorized_predict_with_decay(
     abs_profiles = np.abs(profiles)
 
     # --- 特征 A：极速计算零交叉 (Crossings) ---
+    # 每条 profile 独立 mean 阈值
+    prof_thresh = scale * np.mean(abs_profiles, axis=1, keepdims=True)  # shape (N, 1)
+
     signs = np.zeros_like(profiles, dtype=np.int8)
-    signs[profiles > noise_floor] = 1
-    signs[profiles < -noise_floor] = -1
+    signs[profiles > prof_thresh] = 1
+    signs[profiles < -prof_thresh] = -1
 
     mask_signs = (signs != 0)
     idx = np.where(mask_signs, np.arange(signs.shape[1]), 0)
@@ -154,7 +166,7 @@ def numpy_vectorized_predict_with_decay(
     grid_mean_decay = grid_decay_sum / np.maximum(grid_valid_count, 1.0)
 
     score_grid = np.zeros((num_rows, num_cols), dtype=np.float32)
-    mask = (grid_loc_ratio > 2) & (grid_mean_crossings > 1.3) & (grid_mean_decay > 0.7)
+    mask = (grid_loc_ratio > 2) & (grid_mean_crossings > 0.8) & (grid_mean_decay > 0.2)
     score_grid[mask] = grid_loc_ratio[mask] * grid_mean_crossings[mask] * grid_mean_decay[mask]
 
     return score_grid, img
@@ -179,8 +191,8 @@ def save_heatmap(img, score_grid, output_path="final_vectorized_heatmap.png"):
     cv2.waitKey()
 
 if __name__ == "__main__":
-    test_img = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
-    # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    # test_img = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
+    test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
     # test_img = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
     # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"
     # test_img = "../test_data/05.02.25#out1#mnr_input0012.bmp"

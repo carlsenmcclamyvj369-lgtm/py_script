@@ -771,13 +771,13 @@ def save_8x8_patch_heatmap(
             "score_grid is empty. Please check image size, patch_size, and stride."
         )
 
-    if float(score.max()) > float(score.min()):
-        score_norm = (score - score.min()) / (score.max() - score.min())
-    else:
-        score_norm = np.zeros_like(score)
-
+    # if float(score.max()) > float(score.min()):
+    #     score_norm = (score - score.min()) / (score.max() - score.min())
+    # else:
+    #     score_norm = np.zeros_like(score)
+    score_norm = score
     score_u8 = np.clip(
-        score_norm * 255,
+        score_norm * 25,
         0,
         255,
     ).astype(np.uint8)
@@ -811,7 +811,7 @@ def save_8x8_patch_heatmap(
 if __name__ == "__main__":
     image_path = "../test_data/001_OnlineNews#out1#mnr_input0007.bmp"
     image_path = "../test_data/hisense_mnr_mis_clarity#out1#mnr_input0002.bmp"
-    # image_path = "../test_data/05.02.25#out1#mnr_input0012.bmp"
+    image_path = "../test_data/05.02.25#out1#mnr_input0012.bmp"
 
     results, score_grid, label_grid = predict_8x8_patches(
         image_path=image_path,
