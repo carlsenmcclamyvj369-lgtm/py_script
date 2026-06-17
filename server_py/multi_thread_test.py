@@ -5,7 +5,7 @@ import time
 import datetime
 import numpy as np
 import multiprocessing
-from multiprocessing import Process
+from multiprocessing import Process, Pool
 from PIL import Image
 import re
 
@@ -75,63 +75,71 @@ def copy_images(img_prefix, copies=120):
     print(f"finish copy {copies} {img_prefix} images")
 
 
-def create_video(test_case_cmd, folder):
+def _video_worker(args):
+    case_cmd, folder, cur_path = args
+    case = case_cmd.replace(' ', '').replace(' ', '')
+    st_res = case.split(' ')
+    if len(st_res) <= 5 or st_res[5] == '':
+        return
+    b_video = int(st_res[5])
+    if b_video == 0:
+        return
+    fn = st_res[1].replace('/', '_')
+    start_frame = 0
+    if b_video == 1:
+        os.chdir(os.path.join(cur_path, folder, st_res[1], "out1"))
+        mpeg_enc_cmd = "/export/vls_tools/ffmpeg4.0.2/bin/ffmpeg -framerate 30 -start_number " + str(start_frame) + \
+        " -i mmr_input%4d.bmp -c:v libx265 -pix_fmt yuv420p -x265-params qp=0 -y " + fn + "_in.mp4 >& output.log"
+        print(mpeg_enc_cmd)
+        os.system(mpeg_enc_cmd)
+        mpeg_enc_cmd = "/export/vls_tools/ffmpeg4.0.2/bin/ffmpeg -framerate 30 -start_number " + str(start_frame) + \
+        " -i mmr_output%4d.bmp -c:v libx265 -pix_fmt yuv420p -x265-params qp=0 -y " + fn + "_in.mp4 >& output.log"
+        print(mpeg_enc_cmd)
+        os.system(mpeg_enc_cmd)
+        cp_cmd = "cp "+fn+"*.mp4 " + os.path.join(cur_path, folder, "cmped_img") + "/"
+        os.system(cp_cmd)
+        print(cp_cmd)
+    elif b_video == 2:
+        os.chdir(os.path.join(cur_path, folder, st_res[1], "out1"))
+        copy_images("mmr_input")
+        os.system("rm -rf frame_temp*.bmp")
+        copy_images("mmr_output")
+        mpeg_enc_cmd = "/export/vls_tools/ffmpeg4.0.2/bin/ffmpeg -framerate 30 -start_number " + str(start_frame) + \
+        " -i frame_temp%4d.bmp -c:v libx265 -pix_fmt yuv420p -x265-params qp=0 -y " + fn + "_out.mp4 >& output.log"
+        print(mpeg_enc_cmd)
+        os.system(mpeg_enc_cmd)
+        os.system("rm -rf frame_temp*.bmp")
+        cp_cmd = "cp "+fn+"*.mp4 " + os.path.join(cur_path, folder, "cmped_img") + "/"
+        os.system(cp_cmd)
+        print(cp_cmd)
+
+
+def create_video(test_case_cmd, folder, process_num=4):
     os.system("mkdir " + folder + "/cmped_img")
-    case = ""
     cur_path = os.getcwd()
-    for case_cmd in test_case_cmd:
-        case = case.replace(' ', '').replace(' ', '')
-        st_res = case.split(' ')
-        b_video = 0
-        if(len(st_res) > 5 and st_res[5] != ''):
-            b_video = int(st_res[5])
-        if b_video == 1:
-            #print(folder, st_res[1])
-            fn = st_res[1].replace('/', '_')
-            start_frame = int(st_res[3]) + 10
-            start_frame = 0
-            os.chdir(folder + "/" + st_res[1] + "/out1")
-            mpeg_enc_cmd = "/export/vls_tools/ffmpeg4.0.2/bin/ffmpeg -framerate 30 -start_number "+str(start_frame)+\
-            " -i mmr_input%4d.bmp -c:v libx265 -pix_fmt yuv420p -x265-params qp=0 -y " + fn + "_in.mp4 >& output.log"
-            print(mpeg_enc_cmd)
-            os.system(mpeg_enc_cmd)
-            mpeg_enc_cmd = "/export/vls_tools/ffmpeg4.0.2/bin/ffmpeg -framerate 30 -start_number "+str(start_frame)+\
-            " -i mmr_output%4d.bmp -c:v libx265 -pix_fmt yuv420p -x265-params qp=0 -y " + fn + "_in.mp4 >& output.log"
-            print(mpeg_enc_cmd)
-            os.system(mpeg_enc_cmd)
-            cp_cmd = "cp "+fn+"*.mp4 "+cur_path+"/"+folder+"/cmped_img/"
-            os.system(cp_cmd)
-            print(cp_cmd)
-            os.chdir(cur_path)
-        elif b_video == 2:
-            #print(folder, st_res[1])
-            fn = st_res[1].replace('/','_')
-            start_frame = int(st_res[3]) + 10
-            start_frame = 0
-            os.chdir(folder + "/" + st_res[1] + "/out1")
-            copy_images("mmr_input")
-            os.system("rm -rf frame_temp*.bmp")
-            copy_images("mmr_output")
-            mpeg_enc_cmd = "/export/vls_tools/ffmpeg4.0.2/bin/ffmpeg -framerate 30 -start_number "+str(start_frame)+ \
-            " -i frame_temp%4d.bmp -c:v libx265 -pix_fmt yuv420p -x265-params qp=0 -y " + fn + "_out.mp4 >& output.log"
-            print(mpeg_enc_cmd)
-            os.system(mpeg_enc_cmd)
-            os.system("rm -rf frame_temp*.bmp")
-
-            cp_cmd = "cp "+fn+"*.mp4 "+cur_path+"/"+folder+"/cmped_img/"
-            os.system(cp_cmd)
-            print(cp_cmd)
-            os.chdir(cur_path)
+    args_list = [(cmd, folder, cur_path) for cmd in test_case_cmd]
+    pool = Pool(process_num)
+    pool.map(_video_worker, args_list)
+    pool.close()
+    pool.join()
 
 
-def create_cmpedimg_link(file_list, case_list, folder_cur):
-    # os.system("mkdir " + folder_cur + "/cmped_img")
-    for f in file_list:
-        ln_src = os.getcwd() + '/' + folder_cur + '/' + f
-        dst_f_name = f.replace('/','#')
-        ln_dst = folder_cur + "/cmped_img/"+dst_f_name
-        # print("cp "+ln_src+" "+ln_dst)
-        os.system("cp "+ln_src+" "+ln_dst)
+def _cmpedimg_worker(args):
+    f, folder_cur, cwd = args
+    ln_src = cwd + '/' + folder_cur + '/' + f
+    dst_f_name = f.replace('/','#')
+    ln_dst = folder_cur + "/cmped_img/"+dst_f_name
+    os.system("cp "+ln_src+" "+ln_dst)
+
+
+def create_cmpedimg_link(file_list, case_list, folder_cur, process_num=4):
+    os.system("mkdir " + folder_cur + "/cmped_img")
+    cwd = os.getcwd()
+    args_list = [(f, folder_cur, cwd) for f in file_list]
+    pool = Pool(process_num)
+    pool.map(_cmpedimg_worker, args_list)
+    pool.close()
+    pool.join()
 
 
 def multi_process_test(folder, test_list_cmd, process_num):
