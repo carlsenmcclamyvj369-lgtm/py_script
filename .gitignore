@@ -9,4 +9,7 @@
 *.npy
 *.pth
 *.csv
+*.mp4
+*.pptx
+*.xml
 

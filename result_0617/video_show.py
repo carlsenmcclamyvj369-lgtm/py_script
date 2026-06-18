@@ -133,7 +133,7 @@ def create_advanced_roi_dashboard(data_dir, ppt_output_path, diff_gain=10, roi_b
         canvas[:, :] = [0x24, 0x1E, 0x1E]
 
         # 顶层主客观指标文本渲染
-        cv2.putText(canvas, f"Advanced IQ Evaluation Dashboard | ID: {img_name}", (30, 55), cv2.FONT_HERSHEY_SIMPLEX,
+        cv2.putText(canvas, f"| ID: {img_name}", (30, 55), cv2.FONT_HERSHEY_SIMPLEX,
                     1.25, (255, 255, 255), 3, cv2.LINE_AA)
         metrics_text = f"Metrics ->  Resolution: {orig_w}x{orig_h}  |  PSNR: {psnr:.2f} dB  |  SSIM: {ssim:.4f}  |  ROI Locate: X={rx},Y={ry}"
         cv2.putText(canvas, metrics_text, (30, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 225, 255), 2, cv2.LINE_AA)
