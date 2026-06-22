@@ -1,0 +1,19 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_branch_12050_tree_scenery",
+  "frame_idx": 50,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 388,
+      "y": 926,
+      "w": 116,
+      "h": 92,
+      "files": {
+        "input": "f50_20260618_192207_box0_in.png",
+        "output": "f50_20260618_192207_box0_out.png",
+        "diff": "f50_20260618_192207_box0_diff_x10.png"
+      }
+    }
+  ]
+}

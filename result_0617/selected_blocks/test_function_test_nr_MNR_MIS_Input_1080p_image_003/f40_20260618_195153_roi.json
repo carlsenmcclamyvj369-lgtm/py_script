@@ -1,0 +1,43 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_Input_1080p_image_003",
+  "frame_idx": 40,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 1260,
+      "y": 459,
+      "w": 84,
+      "h": 118,
+      "files": {
+        "input": "f40_20260618_195153_box0_in.png",
+        "output": "f40_20260618_195153_box0_out.png",
+        "diff": "f40_20260618_195153_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 136,
+      "y": 648,
+      "w": 136,
+      "h": 149,
+      "files": {
+        "input": "f40_20260618_195153_box1_in.png",
+        "output": "f40_20260618_195153_box1_out.png",
+        "diff": "f40_20260618_195153_box1_diff_x10.png"
+      }
+    },
+    {
+      "box": 2,
+      "x": 1061,
+      "y": 158,
+      "w": 93,
+      "h": 95,
+      "files": {
+        "input": "f40_20260618_195153_box2_in.png",
+        "output": "f40_20260618_195153_box2_out.png",
+        "diff": "f40_20260618_195153_box2_diff_x10.png"
+      }
+    }
+  ]
+}

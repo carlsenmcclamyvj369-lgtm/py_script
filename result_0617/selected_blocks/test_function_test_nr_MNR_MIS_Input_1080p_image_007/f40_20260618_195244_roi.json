@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_Input_1080p_image_007",
+  "frame_idx": 40,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 1110,
+      "y": 322,
+      "w": 112,
+      "h": 108,
+      "files": {
+        "input": "f40_20260618_195244_box0_in.png",
+        "output": "f40_20260618_195244_box0_out.png",
+        "diff": "f40_20260618_195244_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 878,
+      "y": 444,
+      "w": 110,
+      "h": 170,
+      "files": {
+        "input": "f40_20260618_195244_box1_in.png",
+        "output": "f40_20260618_195244_box1_out.png",
+        "diff": "f40_20260618_195244_box1_diff_x10.png"
+      }
+    }
+  ]
+}

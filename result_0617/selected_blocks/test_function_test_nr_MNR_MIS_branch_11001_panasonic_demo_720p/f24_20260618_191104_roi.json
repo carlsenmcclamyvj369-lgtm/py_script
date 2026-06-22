@@ -1,0 +1,19 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_branch_11001_panasonic_demo_720p",
+  "frame_idx": 24,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 525,
+      "y": 490,
+      "w": 65,
+      "h": 54,
+      "files": {
+        "input": "f24_20260618_191104_box0_in.png",
+        "output": "f24_20260618_191104_box0_out.png",
+        "diff": "f24_20260618_191104_box0_diff_x10.png"
+      }
+    }
+  ]
+}

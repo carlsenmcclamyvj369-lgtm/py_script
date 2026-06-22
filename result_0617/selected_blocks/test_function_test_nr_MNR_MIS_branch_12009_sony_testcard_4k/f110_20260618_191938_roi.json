@@ -1,0 +1,43 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_branch_12009_sony_testcard_4k",
+  "frame_idx": 110,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 680,
+      "y": 615,
+      "w": 66,
+      "h": 87,
+      "files": {
+        "input": "f110_20260618_191938_box0_in.png",
+        "output": "f110_20260618_191938_box0_out.png",
+        "diff": "f110_20260618_191938_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 839,
+      "y": 444,
+      "w": 75,
+      "h": 88,
+      "files": {
+        "input": "f110_20260618_191938_box1_in.png",
+        "output": "f110_20260618_191938_box1_out.png",
+        "diff": "f110_20260618_191938_box1_diff_x10.png"
+      }
+    },
+    {
+      "box": 2,
+      "x": 747,
+      "y": 777,
+      "w": 83,
+      "h": 88,
+      "files": {
+        "input": "f110_20260618_191938_box2_in.png",
+        "output": "f110_20260618_191938_box2_out.png",
+        "diff": "f110_20260618_191938_box2_diff_x10.png"
+      }
+    }
+  ]
+}

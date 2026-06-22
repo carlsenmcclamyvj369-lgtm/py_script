@@ -1,0 +1,19 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_branch_13001_swiss_4k",
+  "frame_idx": 194,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 1314,
+      "y": 892,
+      "w": 230,
+      "h": 203,
+      "files": {
+        "input": "f194_20260618_192418_box0_in.png",
+        "output": "f194_20260618_192418_box0_out.png",
+        "diff": "f194_20260618_192418_box0_diff_x10.png"
+      }
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_branch_010_scenery",
+  "frame_idx": 100,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 1624,
+      "y": 527,
+      "w": 96,
+      "h": 122,
+      "files": {
+        "input": "f100_20260618_185900_box0_in.png",
+        "output": "f100_20260618_185900_box0_out.png",
+        "diff": "f100_20260618_185900_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 1762,
+      "y": 539,
+      "w": 54,
+      "h": 96,
+      "files": {
+        "input": "f100_20260618_185900_box1_in.png",
+        "output": "f100_20260618_185900_box1_out.png",
+        "diff": "f100_20260618_185900_box1_diff_x10.png"
+      }
+    },
+    {
+      "box": 2,
+      "x": 2394,
+      "y": 910,
+      "w": 102,
+      "h": 132,
+      "files": {
+        "input": "f100_20260618_185900_box2_in.png",
+        "output": "f100_20260618_185900_box2_out.png",
+        "diff": "f100_20260618_185900_box2_diff_x10.png"
+      }
+    }
+  ]
+}

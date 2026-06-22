@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_usa_576i_denoise",
+  "frame_idx": 182,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 114,
+      "y": 103,
+      "w": 71,
+      "h": 70,
+      "files": {
+        "input": "f182_20260622_100753_box0_in.png",
+        "output": "f182_20260622_100753_box0_out.png",
+        "diff": "f182_20260622_100753_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 392,
+      "y": 194,
+      "w": 58,
+      "h": 37,
+      "files": {
+        "input": "f182_20260622_100753_box1_in.png",
+        "output": "f182_20260622_100753_box1_out.png",
+        "diff": "f182_20260622_100753_box1_diff_x10.png"
+      }
+    }
+  ]
+}

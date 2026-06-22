@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_jiuzhou_muyunji",
+  "frame_idx": 90,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 563,
+      "y": 591,
+      "w": 113,
+      "h": 70,
+      "files": {
+        "input": "f90_20260618_183850_box0_in.png",
+        "output": "f90_20260618_183850_box0_out.png",
+        "diff": "f90_20260618_183850_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 1063,
+      "y": 76,
+      "w": 48,
+      "h": 29,
+      "files": {
+        "input": "f90_20260618_183850_box1_in.png",
+        "output": "f90_20260618_183850_box1_out.png",
+        "diff": "f90_20260618_183850_box1_diff_x10.png"
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_05.02.24",
+  "frame_idx": 80,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 1386,
+      "y": 554,
+      "w": 100,
+      "h": 25,
+      "files": {
+        "input": "f80_20260618_170525_box0_in.png",
+        "output": "f80_20260618_170525_box0_out.png",
+        "diff": "f80_20260618_170525_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 863,
+      "y": 431,
+      "w": 68,
+      "h": 59,
+      "files": {
+        "input": "f80_20260618_170525_box1_in.png",
+        "output": "f80_20260618_170525_box1_out.png",
+        "diff": "f80_20260618_170525_box1_diff_x10.png"
+      }
+    }
+  ]
+}

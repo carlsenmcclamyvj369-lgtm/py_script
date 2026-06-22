@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_lec_480i_mpeg_mosquito",
+  "frame_idx": 90,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 153,
+      "y": 95,
+      "w": 96,
+      "h": 43,
+      "files": {
+        "input": "f90_20260618_184250_box0_in.png",
+        "output": "f90_20260618_184250_box0_out.png",
+        "diff": "f90_20260618_184250_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 28,
+      "y": 74,
+      "w": 84,
+      "h": 39,
+      "files": {
+        "input": "f90_20260618_184250_box1_in.png",
+        "output": "f90_20260618_184250_box1_out.png",
+        "diff": "f90_20260618_184250_box1_diff_x10.png"
+      }
+    }
+  ]
+}

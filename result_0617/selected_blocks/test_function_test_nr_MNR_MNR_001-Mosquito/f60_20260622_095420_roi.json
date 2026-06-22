@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_MNR_001-Mosquito",
+  "frame_idx": 60,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 814,
+      "y": 374,
+      "w": 196,
+      "h": 94,
+      "files": {
+        "input": "f60_20260622_095420_box0_in.png",
+        "output": "f60_20260622_095420_box0_out.png",
+        "diff": "f60_20260622_095420_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 1084,
+      "y": 700,
+      "w": 156,
+      "h": 161,
+      "files": {
+        "input": "f60_20260622_095420_box1_in.png",
+        "output": "f60_20260622_095420_box1_out.png",
+        "diff": "f60_20260622_095420_box1_diff_x10.png"
+      }
+    }
+  ]
+}

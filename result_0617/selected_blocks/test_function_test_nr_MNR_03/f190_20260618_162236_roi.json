@@ -1,0 +1,16 @@
+{
+  "video": "test_function_test_nr_MNR_03",
+  "frame_idx": 190,
+  "roi": {
+    "x": 437,
+    "y": 899,
+    "w": 132,
+    "h": 54
+  },
+  "diff_gain": 10,
+  "block_files": {
+    "input": "f190_20260618_162236_block_in.png",
+    "output": "f190_20260618_162236_block_out.png",
+    "diff": "f190_20260618_162236_block_diff_x10.png"
+  }
+}

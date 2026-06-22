@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_004_pal_un_ds_hvdefinition",
+  "frame_idx": 180,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 167,
+      "y": 402,
+      "w": 80,
+      "h": 120,
+      "files": {
+        "input": "f180_20260618_165518_box0_in.png",
+        "output": "f180_20260618_165518_box0_out.png",
+        "diff": "f180_20260618_165518_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 254,
+      "y": 337,
+      "w": 61,
+      "h": 69,
+      "files": {
+        "input": "f180_20260618_165518_box1_in.png",
+        "output": "f180_20260618_165518_box1_out.png",
+        "diff": "f180_20260618_165518_box1_diff_x10.png"
+      }
+    }
+  ]
+}

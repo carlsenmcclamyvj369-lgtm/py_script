@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_00553",
+  "frame_idx": 71,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 725,
+      "y": 56,
+      "w": 183,
+      "h": 74,
+      "files": {
+        "input": "f71_20260618_185553_box0_in.png",
+        "output": "f71_20260618_185553_box0_out.png",
+        "diff": "f71_20260618_185553_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 752,
+      "y": 286,
+      "w": 92,
+      "h": 50,
+      "files": {
+        "input": "f71_20260618_185553_box1_in.png",
+        "output": "f71_20260618_185553_box1_out.png",
+        "diff": "f71_20260618_185553_box1_diff_x10.png"
+      }
+    }
+  ]
+}

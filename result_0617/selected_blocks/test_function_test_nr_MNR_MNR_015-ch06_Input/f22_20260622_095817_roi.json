@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_MNR_015-ch06_Input",
+  "frame_idx": 22,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 351,
+      "y": 845,
+      "w": 90,
+      "h": 87,
+      "files": {
+        "input": "f22_20260622_095817_box0_in.png",
+        "output": "f22_20260622_095817_box0_out.png",
+        "diff": "f22_20260622_095817_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 473,
+      "y": 928,
+      "w": 94,
+      "h": 70,
+      "files": {
+        "input": "f22_20260622_095817_box1_in.png",
+        "output": "f22_20260622_095817_box1_out.png",
+        "diff": "f22_20260622_095817_box1_diff_x10.png"
+      }
+    }
+  ]
+}

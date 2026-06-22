@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_5.2.74.KPIX_YandRestless",
+  "frame_idx": 190,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 1273,
+      "y": 309,
+      "w": 78,
+      "h": 54,
+      "files": {
+        "input": "f190_20260618_172101_box0_in.png",
+        "output": "f190_20260618_172101_box0_out.png",
+        "diff": "f190_20260618_172101_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 1173,
+      "y": 407,
+      "w": 110,
+      "h": 18,
+      "files": {
+        "input": "f190_20260618_172101_box1_in.png",
+        "output": "f190_20260618_172101_box1_out.png",
+        "diff": "f190_20260618_172101_box1_diff_x10.png"
+      }
+    }
+  ]
+}

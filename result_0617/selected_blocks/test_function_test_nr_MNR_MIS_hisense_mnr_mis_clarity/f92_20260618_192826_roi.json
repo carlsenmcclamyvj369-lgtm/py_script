@@ -1,0 +1,31 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_hisense_mnr_mis_clarity_input0002",
+  "frame_idx": 92,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 279,
+      "y": 541,
+      "w": 106,
+      "h": 116,
+      "files": {
+        "input": "f92_20260618_192826_box0_in.png",
+        "output": "f92_20260618_192826_box0_out.png",
+        "diff": "f92_20260618_192826_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 1104,
+      "y": 821,
+      "w": 89,
+      "h": 103,
+      "files": {
+        "input": "f92_20260618_192826_box1_in.png",
+        "output": "f92_20260618_192826_box1_out.png",
+        "diff": "f92_20260618_192826_box1_diff_x10.png"
+      }
+    }
+  ]
+}

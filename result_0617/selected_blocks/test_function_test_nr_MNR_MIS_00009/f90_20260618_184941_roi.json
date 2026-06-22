@@ -1,0 +1,55 @@
+{
+  "video": "test_function_test_nr_MNR_MIS_00009",
+  "frame_idx": 90,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 642,
+      "y": 102,
+      "w": 69,
+      "h": 33,
+      "files": {
+        "input": "f90_20260618_184941_box0_in.png",
+        "output": "f90_20260618_184941_box0_out.png",
+        "diff": "f90_20260618_184941_box0_diff_x10.png"
+      }
+    },
+    {
+      "box": 1,
+      "x": 986,
+      "y": 235,
+      "w": 61,
+      "h": 36,
+      "files": {
+        "input": "f90_20260618_184941_box1_in.png",
+        "output": "f90_20260618_184941_box1_out.png",
+        "diff": "f90_20260618_184941_box1_diff_x10.png"
+      }
+    },
+    {
+      "box": 2,
+      "x": 1398,
+      "y": 253,
+      "w": 68,
+      "h": 31,
+      "files": {
+        "input": "f90_20260618_184941_box2_in.png",
+        "output": "f90_20260618_184941_box2_out.png",
+        "diff": "f90_20260618_184941_box2_diff_x10.png"
+      }
+    },
+    {
+      "box": 3,
+      "x": 1587,
+      "y": 175,
+      "w": 128,
+      "h": 38,
+      "files": {
+        "input": "f90_20260618_184941_box3_in.png",
+        "output": "f90_20260618_184941_box3_out.png",
+        "diff": "f90_20260618_184941_box3_diff_x10.png"
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "video": "test_function_test_nr_MNR_VideoResolution",
+  "frame_idx": 180,
+  "diff_gain": 10,
+  "boxes": [
+    {
+      "box": 0,
+      "x": 206,
+      "y": 91,
+      "w": 130,
+      "h": 38,
+      "files": {
+        "input": "f180_20260622_101308_box0_in.png",
+        "output": "f180_20260622_101308_box0_out.png",
+        "diff": "f180_20260622_101308_box0_diff_x10.png"
+      }
+    }
+  ]
+}
