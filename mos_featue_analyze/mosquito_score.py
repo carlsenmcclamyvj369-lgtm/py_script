@@ -206,12 +206,15 @@ def main():
     args = parser.parse_args()
 
     data_dir = Path(__file__).parent
+    print("data_dir: ",data_dir)
 
     # ---- Load ----
     if args.input:
         csv_files = [Path(args.input)]
     else:
         csv_files = sorted(data_dir.glob("*.csv"))
+        print("data_dir: ",csv_files)
+
 
     all_samples = []
     for path in csv_files:
