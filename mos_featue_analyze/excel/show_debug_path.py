@@ -9,6 +9,19 @@ def show_label_predict(true_labels, pred_labels, title_name):
     unique_labels = sorted(set(true_labels + pred_labels))
 
     cm = confusion_matrix(true_labels, pred_labels)
+    print(f"\n--- {title_name} ---")
+    print(cm)
+    # 计算并打印各项指标
+    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+    total = tp + tn + fp + fn
+    print(f"TP={tp}  TN={tn}  FP={fp}  FN={fn}")
+    if (tp + fp) > 0:
+        print(f"Precision: {tp/(tp+fp):.4f}")
+    if (tp + fn) > 0:
+        print(f"Recall:    {tp/(tp+fn):.4f}")
+    if total > 0:
+        print(f"Accuracy:  {(tp+tn)/total:.4f}")
+
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=[f'Class {i}' for i in unique_labels],

@@ -10,9 +10,12 @@ from param_init import load_param
 from show_debug_path import show_label_predict, show_heatmap, show_feature_importance
 import os
 import json
+import warnings
 
 # 参数设置
 os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz/bin/'
+# 忽略所有非致命警告（如 FutureWarning, DataConversionWarning 等）
+warnings.filterwarnings('ignore')
 
 
 # 主函数
@@ -56,6 +59,9 @@ def main():
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size_ratio, stratify=y, random_state=random_seed)
 
+    reg_alpha_val = param_ai_ne.get('reg_alpha', 0.0)
+    reg_lambda_val = param_ai_ne.get('reg_lambda', 0.0)
+
     if param_cfg['randomized_search_param_mode'] == 0:
         model = lgb.LGBMRegressor(
             n_estimators=lgb_tree_num,
@@ -64,6 +70,8 @@ def main():
             random_state=random_seed,
             num_leaves=num_leaves_val,
             # min_child_samples=min_data_in_leaf_num,
+            reg_alpha=reg_alpha_val,
+            reg_lambda=reg_lambda_val,
             metric=['mse', 'mae'],
             n_jobs=-1)
 
@@ -116,10 +124,13 @@ def main():
     else:
         param_grid = {
             'learning_rate': [0.05, 0.1],
-            # 'min_data_in_leaf': np.arange(5, 25, 5),
-            'num_leaves': [31, 63],
-            'n_estimators': np.arange(100, 160, 10),
-            'max_depth': np.arange(6, 11),
+            'num_leaves': [15, 31],
+            'n_estimators': [100, 130],
+            # 'n_estimators': [50, 60],
+            'max_depth': [6, 8, 10],
+            # 'max_depth': [3, 4, 5],
+            'reg_alpha': [0.0, 0.1],
+            'reg_lambda': [0.0, 1.0],
         }
 
         alpha1 = 0.6
@@ -135,6 +146,8 @@ def main():
                 'n_estimators': params['n_estimators'],
                 'num_leaves': params['num_leaves'],
                 'max_depth': params['max_depth'],
+                'reg_alpha': params['reg_alpha'],
+                'reg_lambda': params['reg_lambda'],
                 # 'min_child_samples': params['min_data_in_leaf'],
                 'random_state': random_seed
             }
@@ -227,62 +240,54 @@ def main():
     print(f"训练集 准确率: {match_percentage:.2f}%")
     print("\n")
 
+    # ── 训练集评估 ──
     y_train_list = y_train.values.flatten().tolist()
     y_pred_train_list = y_pred_train.tolist()
     show_label_predict(y_train_list, y_pred_train_list, 'Train Confusion Matrix')
 
-    # 测试集预测
-    y_pred_test = model.predict(X_test)
-    y_pred_test = y_pred_test.round().clip(0, max_pred_val)
-    mse = mean_squared_error(y_test, y_pred_test)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(y_test, y_pred_test)
-    r2 = r2_score(y_test, y_pred_test)
-
-    match_percentage = np.mean(np.abs(y_test.values.flatten() - y_pred_test) <= match_accuracy_tolerance) * 100
-
-    print(f"测试集 MSE: {mse:.4f}")
-    print(f"测试集 RMSE: {rmse:.4f}")
-    print(f"测试集 MAE: {mae:.4f}")
-    print(f"测试集 R²: {r2:.4f}")
-    print(f"测试集 准确率: {match_percentage:.2f}%")
-
-    y_test_list = y_test.values.flatten().tolist()
-    y_pred_test_list = y_pred_test.tolist()
-    show_label_predict(y_test_list, y_pred_test_list, 'Test Confusion Matrix')
-
-    # 7. 对所有数据进行预测
-    print("正在对所有数据集进行预测...")
+    # ── 真正的测试集：外部 test data ──
+    print(f"\n正在读取外部测试集: {test_data_set_path}")
     test_df = pd.read_csv(test_data_set_path)
     test_df.columns = test_df.columns.str.replace(r'[^A-Za-z0-9_]', '_', regex=True)
 
     true_labels = test_df['pred']
-    true_labels = true_labels.tolist()
-    X_new = test_df.iloc[:, data_start_col:data_end_col + 1]
+    true_labels_list = true_labels.tolist()
+    X_test_ext = test_df.iloc[:, data_start_col:data_end_col + 1]
 
-    y_new_pred = model.predict(X_new)
-    y_new_pred = y_new_pred.round()
-    y_new_pred = [int(x) for x in y_new_pred]
-    test_df['y_pred'] = y_new_pred
+    y_pred_test = model.predict(X_test_ext)
+    y_pred_test = y_pred_test.round().clip(0, max_pred_val)
+    mse = mean_squared_error(true_labels, y_pred_test)
+    rmse = np.sqrt(mse)
+    mae = mean_absolute_error(true_labels, y_pred_test)
+    r2 = r2_score(true_labels, y_pred_test)
+
+    match_percentage = np.mean(np.abs(np.array(true_labels) - np.array(y_pred_test)) <= match_accuracy_tolerance) * 100
+
+    print(f"\n测试集 (外部) MSE: {mse:.4f}")
+    print(f"测试集 (外部) RMSE: {rmse:.4f}")
+    print(f"测试集 (外部) MAE: {mae:.4f}")
+    print(f"测试集 (外部) R²: {r2:.4f}")
+    print(f"测试集 (外部) 准确率: {match_percentage:.2f}%")
+
+    y_pred_test_list = y_pred_test.tolist()
+    show_label_predict(true_labels_list, y_pred_test_list, 'Test Confusion Matrix')
+
+    # 6. 过拟合诊断：训练集 vs 外部测试集
+    print("\n" + "="*50)
+    print("过拟合诊断 (训练集 vs 外部测试集):")
+    r2_train_val = r2_score(y_train, y_pred_train)
+    print(f"  训练集 R²: {r2_train_val:.4f}")
+    print(f"  外部测试集 R²: {r2:.4f}")
+    r2_gap = r2_train_val - r2
+    print(f"  R² 差距: {r2_gap:.4f} {'可能过拟合' if r2_gap > 0.1 else '正常'}")
+    print("="*50)
+
+    # 保存外部测试集的预测结果
+    test_df['y_pred'] = y_pred_test
     input_name = os.path.splitext(os.path.basename(test_data_set_path))[0]
     prediction_csv_path = os.path.join(train_data_dir, input_name + "_prediction.csv")
     test_df.to_csv(prediction_csv_path, index=False)
     compare_pred_columns(prediction_csv_path, input_name)
-
-    mse = mean_squared_error(true_labels, y_new_pred)
-    r2 = r2_score(true_labels, y_new_pred)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(true_labels, y_new_pred)
-
-    match_percentage = np.mean(np.abs(np.array(true_labels) - np.array(y_new_pred)) <= match_accuracy_tolerance) * 100
-
-    print(f"所有数据集 MSE: {mse:.4f}")
-    print(f"所有数据集 RMSE: {rmse:.4f}")
-    print(f"所有数据集 MAE: {mae:.4f}")
-    print(f"所有数据集 R²: {r2:.4f}")
-    print(f"所有数据集 准确率: {match_percentage:.2f}%")
-
-    show_label_predict(true_labels, y_new_pred, 'Confusion Matrix')
 
     # 保存混淆矩阵图片
     cm_path = os.path.join(train_data_dir, os.path.basename(test_data_set_path).replace('.csv', '_confusion_matrix.png'))
