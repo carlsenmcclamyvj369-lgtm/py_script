@@ -1,0 +1,9 @@
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 8, 'reg_alpha': 0.1, 'reg_lambda': 0.0, 'random_state': 618}, 训练集:0.0538, 测试集:0.0964, 下限值:0.0964, 差异:0.0426
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 10, 'reg_alpha': 0.0, 'reg_lambda': 1.0, 'random_state': 618}, 训练集:0.0539, 测试集:0.0974, 下限值:0.0974, 差异:0.0435
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 10, 'reg_alpha': 0.0, 'reg_lambda': 0.0, 'random_state': 618}, 训练集:0.0509, 测试集:0.0982, 下限值:0.0982, 差异:0.0473
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 8, 'reg_alpha': 0.0, 'reg_lambda': 1.0, 'random_state': 618}, 训练集:0.0526, 测试集:0.0984, 下限值:0.0984, 差异:0.0458
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 6, 'reg_alpha': 0.1, 'reg_lambda': 0.0, 'random_state': 618}, 训练集:0.0562, 测试集:0.0987, 下限值:0.0987, 差异:0.0424
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 10, 'reg_alpha': 0.1, 'reg_lambda': 1.0, 'random_state': 618}, 训练集:0.0525, 测试集:0.0991, 下限值:0.0991, 差异:0.0467
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 10, 'reg_alpha': 0.1, 'reg_lambda': 0.0, 'random_state': 618}, 训练集:0.0516, 测试集:0.0994, 下限值:0.0994, 差异:0.0478
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 8, 'reg_alpha': 0.1, 'reg_lambda': 1.0, 'random_state': 618}, 训练集:0.0538, 测试集:0.0996, 下限值:0.0996, 差异:0.0458
+参数:{'learning_rate': 0.1, 'n_estimators': 130, 'num_leaves': 31, 'max_depth': 8, 'reg_alpha': 0.0, 'reg_lambda': 0.0, 'random_state': 618}, 训练集:0.0533, 测试集:0.0999, 下限值:0.0999, 差异:0.0466

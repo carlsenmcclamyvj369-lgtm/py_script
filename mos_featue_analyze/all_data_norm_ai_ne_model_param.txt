@@ -1,0 +1,24 @@
+{
+    "param_cfg": {
+        "train_data_set_path": "C:\\code\\py\\denoise\\scripts\\mos_featue_analyze\\all_data_norm.csv",
+        "test_data_set_path": "C:\\code\\py\\denoise\\scripts\\mos_featue_analyze\\all_data_norm.csv",
+        "randomized_search_param_mode": 2,
+        "data_start_col": 1,
+        "data_end_col": 45,
+        "target_start_col": 46,
+        "target_end_col": 46
+    },
+    "param_ai_ne": {
+        "lgb_tree_num": 130,
+        "learning_rate_val": 0.1,
+        "test_size_ratio": 0.2,
+        "max_tree_depth": 8,
+        "num_leaves": 31,
+        "random_seed": 618,
+        "early_stopping_rounds": 50,
+        "max_pred_val": 1,
+        "match_accuracy_tolerance": 0,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0
+    }
+}
