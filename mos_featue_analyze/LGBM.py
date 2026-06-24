@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 import warnings
 from lightgbm import LGBMClassifier
 from sklearn.model_selection import StratifiedKFold, cross_val_score
@@ -8,56 +9,50 @@ from sklearn.metrics import classification_report, confusion_matrix
 # 忽略所有非致命警告（如 FutureWarning, DataConversionWarning 等）
 warnings.filterwarnings('ignore')
 
-EPS = 1e-6
+DATA_DIR = os.path.join(os.path.dirname(__file__), "excel")
+
+# 列为参数的列，不作为特征使用
+PARAM_COLS = {
+    "low_var_th", "high_var_th", "very_high_var_th", "max_strength_th",
+    "eps",
+    "dyn_score_lo", "dyn_score_hi",
+    "d2_score_lo", "d2_score_hi",
+    "sign_score_lo", "sign_score_hi",
+    "dyn_ratio", "d2_ratio", "sign_ratio",
+}
+
+# 不作为特征的元数据列
+SKIP_COLS = {"name", "row", "col"} | PARAM_COLS
 
 
-def build_samples_from_csv(csv_path, label):
-    df = pd.read_csv(csv_path)
-    assert len(df) % 9 == 0
-    feature_cols = [c for c in df.columns if c not in ["row", "col"]]
+def load_excel_data(data_dir=None):
+    """遍历 excel 目录，加载所有 dm.csv / not_dm.csv 作为独立样本。"""
+    if data_dir is None:
+        data_dir = DATA_DIR
     samples = []
-    for i in range(0, len(df), 9):
-        # 使用 .copy() 避免任何 SettingWithCopyWarning
-        g = df.iloc[i:i + 9].reset_index(drop=True).copy()
-        center = g.iloc[4]
-        # 直接按索引 4 删除，更加干净
-        neigh = g.drop(4).reset_index(drop=True)
+    for folder in sorted(os.listdir(data_dir)):
+        fpath = os.path.join(data_dir, folder)
+        if not os.path.isdir(fpath):
+            continue
+        for fname, label in [("dm.csv", 1), ("not_dm.csv", 0)]:
+            csv_path = os.path.join(fpath, fname)
+            if not os.path.exists(csv_path):
+                continue
+            df = pd.read_csv(csv_path)
+            row_data = df.drop(columns=[c for c in SKIP_COLS if c in df.columns], errors="ignore")
+            row_data["label"] = label
+            samples.append(row_data)
 
-        row = {
-            "label": label,
-            "center_row": int(center["row"]),
-            "center_col": int(center["col"]),
-        }
-        for f in feature_cols:
-            c = float(center[f])
-            nv = neigh[f].astype(float).values
-            vals = g[f].astype(float).values
-
-            n_med = float(np.median(nv))
-            n_mean = float(np.mean(nv))
-            n_std = float(np.std(nv))
-
-            row[f"c_{f}"] = c
-            row[f"n_med_{f}"] = n_med
-            row[f"n_mean_{f}"] = n_mean
-            row[f"n_std_{f}"] = n_std
-            row[f"d_med_{f}"] = c - n_med
-            row[f"r_med_{f}"] = c / (n_med + EPS)
-            row[f"rank_{f}"] = float(pd.Series(vals).rank(method="average").iloc[4] / 9.0)
-        samples.append(row)
-    return pd.DataFrame(samples)
+    data = pd.concat(samples, ignore_index=True)
+    print(f"Loaded {len(data)} samples ({data['label'].sum()} dm, {(1 - data['label']).sum()} not_dm)")
+    return data
 
 
-dm = build_samples_from_csv("input0012dm.csv", label=1)
-dm_1 = build_samples_from_csv("input0007_dm.csv", label=1)
-not_dm_1 = build_samples_from_csv("input0012_not_dm.csv", label=0)
-not_dm_2 = build_samples_from_csv("input0007_not_dm.csv", label=0)
-not_dm_3 = build_samples_from_csv("input0002_not_dm.csv", label=0)
-data = pd.concat([dm, dm_1, not_dm_1, not_dm_2, not_dm_3], ignore_index=True)
+data = load_excel_data()
 
 # 确保 y 为整型，避免 lightgbm 将其视为浮点类型产生警告
 y = data["label"].astype(int)
-X = data.drop(columns=["label", "center_row", "center_col"])
+X = data.drop(columns=["label"])
 
 # 1. 修改类别权重：增加正样本(1)的权重，迫使模型重视正样本，减少漏报
 # 使用 scale_pos_weight 替代 class_weight，这是 LightGBM 原生参数，更高效且无兼容性警告
@@ -90,7 +85,7 @@ proba = model.predict_proba(X)[:, 1]
 # 2. 动态阈值搜索：寻找满足“召回率达标且误判最少”的最佳阈值
 best_th = 0.5
 best_precision = 0.0
-target_recall = 1.0  # 目标：正样本全部预测正确（召回率100%）。如果数据有噪声可设为 0.95 或 0.98
+target_recall = 0.95  # 目标：正样本全部预测正确（召回率100%）。如果数据有噪声可设为 0.95 或 0.98
 print("\n--- Searching for optimal threshold ---")
 
 for th in np.arange(0.01, 0.99, 0.01):
