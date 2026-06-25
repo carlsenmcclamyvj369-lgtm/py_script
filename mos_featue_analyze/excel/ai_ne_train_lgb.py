@@ -19,9 +19,9 @@ warnings.filterwarnings('ignore')
 
 
 features_list = ['mean_var', 'low_var_count', 'high_var_count', 'edge_strength',
-                 'edge_orientation_conf', 'row_second_diff', 'col_second_diff', 'second_diff_max',
+                 'edge_orientation_conf', 'col_ringing_mean', 'row_ringing_mean', 'second_diff_max',
                  'second_diff_min_max', 'profile_ringing_mean', 'ringing_mean_min', 'ringing_mean_min_max',
-                 'Row Diff Mean', 'Row Diff Max', 'Col Diff Mean', 'Col Diff Max']
+                 'row_ringing_max', 'Row Diff Max', 'col_ringing_max', 'Col Diff Max']
 
 # 主函数
 def main():
