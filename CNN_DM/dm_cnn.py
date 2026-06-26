@@ -3,7 +3,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 
 # =========================
 # 1. 只使用这16个特征
@@ -119,8 +120,6 @@ class MosquitoDenoiseCNN(nn.Module):
         self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=0)
         self.bn3 = nn.BatchNorm2d(16)
         self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
-        # 兼容可能的 bn4
-        self.bn4 = nn.BatchNorm2d(1)
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
@@ -132,73 +131,104 @@ class MosquitoDenoiseCNN(nn.Module):
         return x
 
 # =========================
-# 5. 加载数据
+# 5. 以下训练代码仅在直接运行时执行
 # =========================
-dm_dataset = MosquitoPatchDataset("9x9_dm.csv", label=1)
-not_dm_dataset = MosquitoPatchDataset("9x9_not_dm.csv", label=0)
-dataset = ConcatDataset([dm_dataset, not_dm_dataset])
-dataloader = DataLoader(
-    dataset,
-    batch_size=128,
-    shuffle=True,
-    num_workers=0
-)
+if __name__ == "__main__":
+    dm_dataset = MosquitoPatchDataset("9x9_dm.csv", label=1)
+    not_dm_dataset = MosquitoPatchDataset("9x9_not_dm.csv", label=0)
 
-# =========================
-# 6. 训练
-# =========================
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # 按 8:2 分层切分训练/验证集
+    val_ratio = 0.2
+    dm_size = len(dm_dataset)
+    not_dm_size = len(not_dm_dataset)
 
-model = MosquitoDenoiseCNN().to(device)
-criterion = nn.BCELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    dm_val = int(dm_size * val_ratio)
+    not_dm_val = int(not_dm_size * val_ratio)
 
-epochs = 40
-best_loss = 100000
+    dm_indices = np.arange(dm_size)
+    not_dm_indices = np.arange(not_dm_size)
+    np.random.shuffle(dm_indices)
+    np.random.shuffle(not_dm_indices)
 
-for epoch in range(epochs):
-    model.train()
-    total_loss = 0.0
-    total_count = 0
+    train_idx = list(dm_indices[dm_val:]) + [dm_size + i for i in not_dm_indices[not_dm_val:]]
+    val_idx = list(dm_indices[:dm_val]) + [dm_size + i for i in not_dm_indices[:not_dm_val]]
 
-    for x, y in dataloader:
-        x = x.to(device)
-        y = y.to(device)
+    full_dataset = ConcatDataset([dm_dataset, not_dm_dataset])
+    train_dataset = Subset(full_dataset, train_idx)
+    val_dataset = Subset(full_dataset, val_idx)
 
-        pred = model(x)
-        loss = criterion(pred, y)
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False, num_workers=0)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    print(f"Train: {len(train_dataset)} patches, Val: {len(val_dataset)} patches")
 
-        batch_size = x.size(0)
-        total_loss += loss.item() * batch_size
-        total_count += batch_size
+    # =========================
+    # 6. 训练
+    # =========================
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
 
-    avg_loss = total_loss / total_count
-    print(f"Epoch [{epoch + 1}/{epochs}], Loss: {avg_loss:.6f}")
+    model = MosquitoDenoiseCNN().to(device)
+    criterion = nn.BCELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    # ★★★ 核心逻辑：只有比历史最佳更好时才保存 ★★★
-    if avg_loss < best_loss:
-        best_loss = avg_loss
-        torch.save(model.state_dict(), "mosquito_denoise_cnn.pth")
+    epochs = 40
+    best_f1 = 0.0
 
-# =========================
-# 7. 简单验证输出
-# =========================
-model.eval()
+    for epoch in range(epochs):
+        # ─── Train ───
+        model.train()
+        total_loss = 0.0
+        total_count = 0
 
-with torch.no_grad():
-    x, y = next(iter(dataloader))
-    x = x.to(device)
-    pred = model(x)
+        for x, y in train_loader:
+            x = x.to(device)
+            y = y.to(device)
 
-    print("Pred:", pred[:10].squeeze().cpu().numpy())
-    print("GT:  ", y[:10].squeeze().numpy())
+            pred = model(x)
+            loss = criterion(pred, y)
 
-# =========================
-# 8. 保存模型
-# =========================
-# torch.save(model.state_dict(), "mosquito_denoise_cnn.pth")
-# print("Model saved to mosquito_denoise_cnn.pth")
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            batch_size = x.size(0)
+            total_loss += loss.item() * batch_size
+            total_count += batch_size
+
+        avg_loss = total_loss / total_count
+
+        # ─── Validation ───
+        model.eval()
+        all_preds = []
+        all_labels = []
+
+        with torch.no_grad():
+            for x, y in val_loader:
+                x = x.to(device)
+                y = y.to(device)
+                pred = model(x)
+                all_preds.append(pred.cpu().numpy())
+                all_labels.append(y.cpu().numpy())
+
+        all_preds = np.concatenate(all_preds).flatten()
+        all_labels = np.concatenate(all_labels).flatten()
+        pred_binary = (all_preds > 0.5).astype(np.int64)
+
+        acc = accuracy_score(all_labels, pred_binary)
+        prec = precision_score(all_labels, pred_binary, zero_division=0)
+        rec = recall_score(all_labels, pred_binary, zero_division=0)
+        f1 = f1_score(all_labels, pred_binary, zero_division=0)
+        cm = confusion_matrix(all_labels, pred_binary)
+
+        print(f"Epoch [{epoch+1}/{epochs}]  Loss: {avg_loss:.6f}  "
+              f"Val Acc: {acc:.4f}  Prec: {prec:.4f}  Rec: {rec:.4f}  F1: {f1:.4f}")
+        print(f"  Confusion Matrix:")
+        print(f"    TN={cm[0,0]:>5d}  FP={cm[0,1]:>5d}")
+        print(f"    FN={cm[1,0]:>5d}  TP={cm[1,1]:>5d}")
+
+        # 按验证集 F1 保存最佳模型
+        if f1 > best_f1:
+            best_f1 = f1
+            torch.save(model.state_dict(), "mosquito_denoise_cnn.pth")
+            print(f"  >>> Model saved (F1 improved to {f1:.4f})")

@@ -6,24 +6,13 @@ and runs the CNN to predict dm/not_dm. Overlays results on the image.
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import cv2
 import os
 import sys
 import time
 
-# 添加 dm_cnn.py 所在目录到 sys.path（确保可导入）
-dm_cnn_dir = os.path.dirname(os.path.abspath(__file__))  # 获取当前脚本所在目录
-sys.path.insert(0, dm_cnn_dir)  # 将当前目录加入 Python 搜索路径
-
-# 从 dm_cnn.py 导入模型类
-from dm_cnn import MosquitoDenoiseCNN
-
-# 添加 feature_compute_ref 所在目录（确保依赖模块可导入）
-sys.path.insert(0, os.path.join(dm_cnn_dir, '..', 'mos_featue_analyze'))
-sys.path.insert(0, os.path.join(dm_cnn_dir, '..', 'mos_featue_analyze', 'excel'))
-import feature_compute_ref as fcr
+from dm_cnn import MosquitoDenoiseCNN, features_list, NORM_DIV
+import feature_compute_reference as fcr
 
 # ─── Config ───
 SCRIPT_DIR = os.path.dirname(__file__)
@@ -32,32 +21,8 @@ TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
-
-# 16 features used by CNN
-FEATURES16 = [
-    'mean_var', 'low_var_count', 'high_var_count',
-    'edge_strength', 'edge_orientation_conf',
-    'col_ringing_mean', 'row_ringing_mean',
-    'second_diff_max', 'second_diff_min_max',
-    'profile_ringing_mean', 'ringing_mean_min', 'ringing_mean_min_max',
-    'row_ringing_max', 'row_diff_max', 'col_ringing_max', 'col_diff_max',
-]
-
-# Normalization divisors (same as dm_cnn.py)
-NORM_DIV16 = {
-    'mean_var': 1020.0, 'low_var_count': 64.0, 'high_var_count': 64.0,
-    'edge_strength': 255.0, 'edge_orientation_conf': 1.0,
-    'col_ringing_mean': 1.0, 'row_ringing_mean': 1.0,
-    'second_diff_max': 510.0, 'second_diff_min_max': 1.0,
-    'profile_ringing_mean': 1.0, 'ringing_mean_min': 1.0, 'ringing_mean_min_max': 1.0,
-    'row_ringing_max': 1.0, 'col_ringing_max': 1.0,
-    'row_diff_max': 255.0, 'col_diff_max': 255.0,
-}
-
-FEATURE_IDX = None  # set at runtime
-
-# 9x9 offsets row-major
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
+FEATURE_IDX = None  # set at runtime
 
 
 def get_block(map2d, bi, bj):
@@ -79,7 +44,6 @@ def compute_grid_features(y_full):
     lap_map = fcr.compute_lap_map(y_full)
     grad_map = fcr.compute_grad_map(y_full)
     h_edge, v_edge = fcr.compute_edge_maps(y_full)
-    pm = (var_map, res_map, lap_map, grad_map, h_edge, v_edge)
 
     TOTAL = 49
     grid = np.zeros((gh, gw, TOTAL), dtype=np.float32)
@@ -93,7 +57,6 @@ def compute_grid_features(y_full):
             bh, bw = block.shape
             feats = np.zeros(TOTAL, dtype=np.float32)
 
-            # Variance
             bv = get_block(var_map, bi, bj)
             if len(bv) > 0:
                 sv = np.sort(bv)
@@ -191,13 +154,9 @@ def predict_image(model, device, bmp_path, output_path):
     grid = compute_grid_features(y_full)
     print(f"[{time.time()-t0:.0f}s]")
 
-    # Select 16 features
-    f_idx = [FEATURE_IDX[f] for f in FEATURES16]
+    f_idx = [FEATURE_IDX[f] for f in features_list]
+    div_arr = np.array([NORM_DIV[f] for f in features_list], dtype=np.float32)
 
-    # ★ 优化：在循环外提前计算好归一化除数数组
-    div_arr = np.array([NORM_DIV16[f] for f in FEATURES16], dtype=np.float32)
-
-    # Assemble 9x9 neighborhoods (skip border blocks where 9x9 doesn't fit)
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
     t0 = time.time()
 
@@ -211,25 +170,20 @@ def predict_image(model, device, bmp_path, output_path):
             for i, (dr, dc) in enumerate(OFFSETS_9x9):
                 fv = grid[bi + dr, bj + dc, f_idx]
                 neigh[i] = np.clip(fv / div_arr, 0, 1)
-            # (81, 16) -> (9, 9, 16) -> (16, 9, 9)
             patch = neigh.reshape(9, 9, 16).transpose(2, 0, 1)
             patches.append(patch)
             coords.append((bi, bj))
 
     if patches:
-        X = np.stack(patches, axis=0)  # (N, 16, 9, 9)
+        X = np.stack(patches, axis=0)
         X_t = torch.tensor(X, dtype=torch.float32, device=device)
-
         with torch.no_grad():
-            # ★ 模型内部已经包含了 sigmoid，直接输出的就是 0~1 的概率
             probs = model(X_t).cpu().numpy().flatten()
-
         for idx, (bi, bj) in enumerate(coords):
             pred_map[bi, bj] = probs[idx]
 
     print(f"[{time.time()-t0:.0f}s]")
 
-    # Visualize
     dm_count = int(np.nansum(pred_map > 0.5))
     valid_count = int(np.sum(~np.isnan(pred_map)))
     print(f"  DM: {dm_count}/{valid_count} ({100*dm_count/max(valid_count,1):.1f}%)")
@@ -258,7 +212,6 @@ def predict_image(model, device, bmp_path, output_path):
 
 
 def main():
-    # Build feature index (49 features)
     global FEATURE_IDX
     ALL49 = [
         'mean_var', 'max_var', 'top5_var', 'low_var_count', 'high_var_count', 'very_high_var_count',
@@ -282,17 +235,13 @@ def main():
     print(f"Device: {device}")
 
     model = MosquitoDenoiseCNN().to(device)
-
-    # 使用 strict=False 防止 bn4 权重问题
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device), strict=False)
     model.eval()
     print(f"Model loaded from {MODEL_PATH}")
 
-    # Process single image or all
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if arg == '--batch':
-            # Batch: process all images
             os.makedirs(OUTPUT_DIR, exist_ok=True)
             bmps = sorted([f for f in os.listdir(TEST_DIR) if f.endswith('.bmp')])
             print(f"Processing {len(bmps)} images...\n")
@@ -304,7 +253,6 @@ def main():
                 predict_image(model, device, bmp_path, out_path)
                 print(f"  [{time.time()-t0:.0f}s]\n")
         else:
-            # Single image: path or filename
             bmp_path = arg if os.path.exists(arg) else os.path.join(TEST_DIR, arg)
             out_path = os.path.join(OUTPUT_DIR, os.path.basename(bmp_path).replace('.bmp', '_cnn.png'))
             print(f"\nProcessing: {bmp_path}")
