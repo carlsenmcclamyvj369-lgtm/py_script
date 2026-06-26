@@ -134,34 +134,6 @@ class MosquitoPatchDataset(Dataset):
 # 4. 4层 CNN Model
 #    padding 全部为 0
 # =========================
-class MosquitoDenoiseCNN(nn.Module):
-    def __init__(self):
-        super(MosquitoDenoiseCNN, self).__init__()
-
-        self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
-        self.bn1 = nn.BatchNorm2d(32)
-
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=0)
-        self.bn2 = nn.BatchNorm2d(64)
-
-        self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=0)
-        self.bn3 = nn.BatchNorm2d(16)
-
-        self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
-        self.bn4 = nn.BatchNorm2d(1)
-
-    def forward(self, x):
-        # x: (N, 16, 9, 9)
-
-        x = F.relu(self.bn1(self.conv1(x)))  # (N,32,7,7)
-        x = F.relu(self.bn2(self.conv2(x)))  # (N,64,5,5)
-        x = F.relu(self.bn3(self.conv3(x)))  # (N,16,3,3)
-        x = F.relu(self.bn4(self.conv4(x)))  # (N,1,1,1)
-
-        x = x.view(x.size(0), -1)            # (N,1)
-        x = torch.sigmoid(x)
-
-        return x
 
 
 # =========================
@@ -190,7 +162,8 @@ model = MosquitoDenoiseCNN().to(device)
 criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-epochs = 20
+epochs = 40
+best_loss = 100000
 
 for epoch in range(epochs):
     model.train()
@@ -215,6 +188,10 @@ for epoch in range(epochs):
     avg_loss = total_loss / total_count
     print(f"Epoch [{epoch + 1}/{epochs}], Loss: {avg_loss:.6f}")
 
+    # ★★★ 核心逻辑：只有比历史最佳更好时才保存 ★★★
+    if avg_loss < best_loss:
+        best_loss = avg_loss
+        torch.save(model.state_dict(), "mosquito_denoise_cnn.pth")
 
 # =========================
 # 7. 简单验证输出
@@ -233,5 +210,5 @@ with torch.no_grad():
 # =========================
 # 8. 保存模型
 # =========================
-torch.save(model.state_dict(), "mosquito_denoise_cnn.pth")
-print("Model saved to mosquito_denoise_cnn.pth")
+# torch.save(model.state_dict(), "mosquito_denoise_cnn.pth")
+# print("Model saved to mosquito_denoise_cnn.pth")
