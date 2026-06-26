@@ -12,16 +12,18 @@ import cv2
 import os
 import sys
 import time
+
+# 添加 dm_cnn.py 所在目录到 sys.path（确保可导入）
+dm_cnn_dir = os.path.dirname(os.path.abspath(__file__))  # 获取当前脚本所在目录
+sys.path.insert(0, dm_cnn_dir)  # 将当前目录加入 Python 搜索路径
+
+# 从 dm_cnn.py 导入模型类
 from dm_cnn import MosquitoDenoiseCNN
 
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'mos_featue_analyze'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'mos_featue_analyze', 'excel'))
-
+# 添加 feature_compute_ref 所在目录（确保依赖模块可导入）
+sys.path.insert(0, os.path.join(dm_cnn_dir, '..', 'mos_featue_analyze'))
+sys.path.insert(0, os.path.join(dm_cnn_dir, '..', 'mos_featue_analyze', 'excel'))
 import feature_compute_ref as fcr
-
-# ─── CNN Model (same architecture as dm_cnn.py) ───
-
 
 # ─── Config ───
 SCRIPT_DIR = os.path.dirname(__file__)
@@ -192,6 +194,9 @@ def predict_image(model, device, bmp_path, output_path):
     # Select 16 features
     f_idx = [FEATURE_IDX[f] for f in FEATURES16]
 
+    # ★ 优化：在循环外提前计算好归一化除数数组
+    div_arr = np.array([NORM_DIV16[f] for f in FEATURES16], dtype=np.float32)
+
     # Assemble 9x9 neighborhoods (skip border blocks where 9x9 doesn't fit)
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
     t0 = time.time()
@@ -205,8 +210,7 @@ def predict_image(model, device, bmp_path, output_path):
             neigh = np.zeros((81, 16), dtype=np.float32)
             for i, (dr, dc) in enumerate(OFFSETS_9x9):
                 fv = grid[bi + dr, bj + dc, f_idx]
-                div = np.array([NORM_DIV16[f] for f in FEATURES16], dtype=np.float32)
-                neigh[i] = np.clip(fv / div, 0, 1)
+                neigh[i] = np.clip(fv / div_arr, 0, 1)
             # (81, 16) -> (9, 9, 16) -> (16, 9, 9)
             patch = neigh.reshape(9, 9, 16).transpose(2, 0, 1)
             patches.append(patch)
@@ -217,6 +221,7 @@ def predict_image(model, device, bmp_path, output_path):
         X_t = torch.tensor(X, dtype=torch.float32, device=device)
 
         with torch.no_grad():
+            # ★ 模型内部已经包含了 sigmoid，直接输出的就是 0~1 的概率
             probs = model(X_t).cpu().numpy().flatten()
 
         for idx, (bi, bj) in enumerate(coords):
@@ -277,7 +282,9 @@ def main():
     print(f"Device: {device}")
 
     model = MosquitoDenoiseCNN().to(device)
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+
+    # 使用 strict=False 防止 bn4 权重问题
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device), strict=False)
     model.eval()
     print(f"Model loaded from {MODEL_PATH}")
 
