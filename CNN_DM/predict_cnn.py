@@ -10,6 +10,7 @@ import cv2
 import os
 import sys
 import time
+from pathlib import Path
 
 from dm_cnn import MosquitoDenoiseCNN, features_list, NORM_DIV
 import feature_compute_reference as fcr
@@ -177,11 +178,14 @@ def predict_image(model, device, bmp_path, output_path):
     patches = []
     coords = []
 
-    for bi in range(4, gh - 4):
-        for bj in range(4, gw - 4):
+    for bi in range(0, gh):
+        for bj in range(0, gw):
             neigh = np.zeros((81, 16), dtype=np.float32)
             for i, (dr, dc) in enumerate(OFFSETS_9x9):
-                neigh[i] = np.clip(grid[bi + dr, bj + dc] / div_arr, 0, 1)
+                dr1 = min(max(dr + dr, 0), gh-1)
+                dc1 = min(max(dc + dc, 0), gw-1)
+                fv = grid[dr1, dc1, f_idx]
+                neigh[i] = np.clip(fv / div_arr, 0, 1)
             patch = neigh.reshape(9, 9, 16).transpose(2, 0, 1)
             patches.append(patch)
             coords.append((bi, bj))
@@ -221,6 +225,22 @@ def predict_image(model, device, bmp_path, output_path):
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
     cv2.imwrite(str(output_path), display)
     print(f"  Saved: {output_path}")
+
+    # 7x7 双边滤波
+    # d=7            → 邻域直径（kernel size）
+    # sigmaColor    → 颜色空间标准差
+    # sigmaSpace    → 坐标空间标准差
+    filtered_img = cv2.bilateralFilter(bgr, d=7)
+
+    pred_map_8x8 = pred_map.repeat(8, axis=0).repeat(8, axis=1)
+    out_img = filtered_img * pred_map_8x8 + bgr * (1-pred_map_8x8)
+
+    out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_bilater.bmp")
+    cv2.imwrite(str(out_path), filtered_img)
+    out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_pred8x8.bmp")
+    cv2.imwrite(str(out_path), pred_map_8x8)
+    out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_out.bmp")
+    cv2.imwrite(str(out_path), out_img)
 
 
 def main():
