@@ -16,7 +16,6 @@ import os
 import sys
 import time
 import re
-import pandas as pd
 
 from dm_cnn import MosquitoDenoiseCNN, features_list, NORM_DIV
 import feature_compute_reference as fcr
@@ -59,7 +58,7 @@ def safe_stem(path):
 
 def feature_cache_path(bmp_path):
     os.makedirs(FEATURE_CACHE_DIR, exist_ok=True)
-    return os.path.join(FEATURE_CACHE_DIR, safe_stem(bmp_path) + "_grid_features.xlsx")
+    return os.path.join(FEATURE_CACHE_DIR, safe_stem(bmp_path) + "_grid_features.npz")
 
 
 def get_block(map2d, bi, bj):
@@ -193,39 +192,15 @@ def compute_grid_features(y_full):
     return grid
 
 
-def save_grid_features_excel(grid, xlsx_path, image_name):
-    """Save grid feature tensor (gh, gw, 49) to an Excel cache."""
-    gh, gw, nf = grid.shape
-    bi = np.repeat(np.arange(gh), gw)
-    bj = np.tile(np.arange(gw), gh)
-    flat = grid.reshape(gh * gw, nf)
-
-    df = pd.DataFrame(flat, columns=ALL49)
-    df.insert(0, "grid_col", bj.astype(np.int32))
-    df.insert(0, "grid_row", bi.astype(np.int32))
-    df.insert(0, "image_name", image_name)
-
-    # openpyxl is used by pandas for xlsx writing.
-    df.to_excel(xlsx_path, index=False, engine="openpyxl")
+def save_grid_features_npz(grid, npz_path, image_name):
+    """Save grid feature tensor (gh, gw, 49) to a .npz cache file."""
+    np.savez_compressed(npz_path, grid=grid, image_name=image_name)
 
 
-def load_grid_features_excel(xlsx_path):
-    """Load grid feature tensor from Excel cache. Returns (gh, gw, 49)."""
-    df = pd.read_excel(xlsx_path, engine="openpyxl")
-
-    missing = [c for c in ["grid_row", "grid_col"] + ALL49 if c not in df.columns]
-    if missing:
-        raise ValueError(f"Feature cache missing columns: {missing}")
-
-    gh = int(df["grid_row"].max()) + 1
-    gw = int(df["grid_col"].max()) + 1
-    grid = np.zeros((gh, gw, len(ALL49)), dtype=np.float32)
-
-    rows = df["grid_row"].to_numpy(dtype=np.int32)
-    cols = df["grid_col"].to_numpy(dtype=np.int32)
-    vals = df[ALL49].to_numpy(dtype=np.float32)
-    grid[rows, cols, :] = vals
-    return grid
+def load_grid_features_npz(npz_path):
+    """Load grid feature tensor from .npz cache file. Returns (gh, gw, 49)."""
+    data = np.load(npz_path)
+    return data["grid"]
 
 
 def compute_or_load_grid_features(y_full, bmp_path, force_recompute=False):
@@ -235,7 +210,7 @@ def compute_or_load_grid_features(y_full, bmp_path, force_recompute=False):
     if (not force_recompute) and os.path.exists(cache_path):
         print(f"  Loading cached grid features: {cache_path}", end=" ", flush=True)
         t0 = time.time()
-        grid = load_grid_features_excel(cache_path)
+        grid = load_grid_features_npz(cache_path)
         print(f"[{time.time() - t0:.1f}s]")
         return grid
 
@@ -246,33 +221,39 @@ def compute_or_load_grid_features(y_full, bmp_path, force_recompute=False):
 
     print(f"  Saving grid features cache: {cache_path}", end=" ", flush=True)
     t0 = time.time()
-    save_grid_features_excel(grid, cache_path, os.path.splitext(os.path.basename(bmp_path))[0])
+    save_grid_features_npz(grid, cache_path, os.path.splitext(os.path.basename(bmp_path))[0])
     print(f"[{time.time() - t0:.1f}s]")
 
     return grid
 
 
 def build_patches_from_grid(grid):
-    """Assemble 9x9 neighborhoods. Returns X:(N,16,9,9), coords list."""
+    """Assemble 9x9 neighborhoods with edge padding, covering ALL blocks.
+
+    Grid is edge-padded by 4 blocks on each side so the 9x9 neighborhood
+    is valid even for border blocks of the original image.
+
+    Returns X:(N,16,9,9), coords list for every block (0..gh-1, 0..gw-1).
+    """
     gh, gw, _ = grid.shape
     f_idx = [FEATURE_IDX[f] for f in features_list]
     div_arr = np.array([NORM_DIV[f] for f in features_list], dtype=np.float32)
 
-    patches = []
-    coords = []
-    for bi in range(4, gh - 4):
-        for bj in range(4, gw - 4):
-            neigh = np.zeros((81, 16), dtype=np.float32)
-            for i, (dr, dc) in enumerate(OFFSETS_9x9):
-                fv = grid[bi + dr, bj + dc, f_idx]
-                neigh[i] = np.clip(fv / div_arr, 0, 1)
-            patch = neigh.reshape(9, 9, 16).transpose(2, 0, 1)
-            patches.append(patch)
-            coords.append((bi, bj))
+    # Edge-pad grid to make 9x9 neighborhoods valid at borders
+    pad = 4
+    grid_pad = np.pad(grid[..., f_idx], ((pad, pad), (pad, pad), (0, 0)), mode='edge')
+    # Normalize
+    grid_pad = np.clip(grid_pad / div_arr, 0, 1)
 
-    if not patches:
-        return None, coords
-    return np.stack(patches, axis=0), coords
+    # sliding_window_view gives (gh+2*pad-8, gw+2*pad-8, 9, 9, 16) = (gh, gw, 9, 9, 16)
+    from numpy.lib.stride_tricks import sliding_window_view
+    windows = sliding_window_view(grid_pad, (9, 9), axis=(0, 1))
+    # windows shape: (gh, gw, 9, 9, 16)
+    N = gh * gw
+    X = np.ascontiguousarray(windows).reshape(N, 9, 9, 16).transpose(0, 3, 1, 2)
+
+    coords = [(bi, bj) for bi in range(gh) for bj in range(gw)]
+    return X, coords
 
 
 def predict_patches_batch(model, device, X, batch_size=BATCH_SIZE):
@@ -287,8 +268,42 @@ def predict_patches_batch(model, device, X, batch_size=BATCH_SIZE):
     return np.concatenate(probs_list, axis=0)
 
 
-def predict_image(model, device, bmp_path, output_path, force_recompute=False):
-    """Run CNN on a BMP, save overlay."""
+def denoise_dm_blocks(y_channel, pred_map, gs=8, d=7, sigma_color=75, sigma_space=75):
+    """Apply 7x7 bilateral filter only on DM-predicted blocks.
+
+    Args:
+        y_channel: (H, W) float64 Y channel from original image.
+        pred_map:  (gh, gw) float32 prediction probabilities.
+        gs:        grid size (8).
+        d:         bilateral filter diameter (7).
+        sigma_color, sigma_space: bilateral filter parameters.
+
+    Returns:
+        denoised: (H, W) float64, filtered on DM blocks, original elsewhere.
+    """
+    H, W = y_channel.shape
+
+    # Compute bilateral filter once for the whole image
+    y_u8 = np.clip(np.round(y_channel), 0, 255).astype(np.uint8)
+    y_bf = cv2.bilateralFilter(y_u8, d, sigma_color, sigma_space).astype(np.float64)
+
+    denoised = y_channel.copy()
+    dm_mask = pred_map > 0.5
+
+    gh, gw = pred_map.shape
+    for bi in range(gh):
+        for bj in range(gw):
+            if not dm_mask[bi, bj]:
+                continue
+            y1, y2 = bi * gs, min(bi * gs + gs, H)
+            x1, x2 = bj * gs, min(bj * gs + gs, W)
+            denoised[y1:y2, x1:x2] = y_bf[y1:y2, x1:x2]
+
+    return denoised
+
+
+def predict_image(model, device, bmp_path, output_path, force_recompute=False, denoise=False):
+    """Run CNN on a BMP, save overlay and optionally denoised output."""
     bgr = cv2.imread(bmp_path, cv2.IMREAD_COLOR)
     if bgr is None:
         print(f"ERROR: cannot read {bmp_path}")
@@ -305,8 +320,8 @@ def predict_image(model, device, bmp_path, output_path, force_recompute=False):
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
     t0 = time.time()
 
-    pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
     X, coords = build_patches_from_grid(grid)
+    pred_map = np.zeros((gh, gw), dtype=np.float32)
 
     if X is not None and len(coords) > 0:
         probs = predict_patches_batch(model, device, X, batch_size=BATCH_SIZE)
@@ -315,26 +330,28 @@ def predict_image(model, device, bmp_path, output_path, force_recompute=False):
 
     print(f"[{time.time() - t0:.1f}s]")
 
-    dm_count = int(np.nansum(pred_map > 0.5))
-    valid_count = int(np.sum(~np.isnan(pred_map)))
+    dm_count = int(np.sum(pred_map > 0.5))
+    valid_count = gh * gw
     print(f"  DM: {dm_count}/{valid_count} ({100 * dm_count / max(valid_count, 1):.1f}%)")
 
     y_norm = np.clip(y_full, 0, 255).astype(np.uint8)
     display = cv2.cvtColor(y_norm, cv2.COLOR_GRAY2BGR)
 
-    # Overlay. Drawing every rectangle is still somewhat slow but kept for compatibility.
+    # Overlay (all blocks are valid now thanks to edge padding)
+    dm_mask = pred_map > 0.5
     for bi in range(gh):
         for bj in range(gw):
+            if not dm_mask[bi, bj]:
+                continue
             y1, y2 = bi * GS, min(bi * GS + GS, H)
             x1, x2 = bj * GS, min(bj * GS + GS, W)
-            p = pred_map[bi, bj]
-            if np.isnan(p):
-                continue
-            if p > 0.5:
-                overlay = display[y1:y2, x1:x2].astype(np.float64)
-                overlay[:, :, 2] = np.clip(overlay[:, :, 2] * 0.6 + 255 * 0.4, 0, 255)
-                display[y1:y2, x1:x2] = overlay.astype(np.uint8)
-            cv2.rectangle(display, (x1, y1), (x2, y2), (100, 100, 100), 1)
+            block = display[y1:y2, x1:x2].astype(np.float64)
+            block[:, :, 2] = np.clip(block[:, :, 2] * 0.6 + 255 * 0.4, 0, 255)
+            display[y1:y2, x1:x2] = block.astype(np.uint8)
+
+    # Grid lines via numpy slicing
+    display[0::8, :] = (100, 100, 100)
+    display[:, 0::8] = (100, 100, 100)
 
     cv2.putText(
         display,
@@ -349,43 +366,65 @@ def predict_image(model, device, bmp_path, output_path, force_recompute=False):
     cv2.imwrite(str(output_path), display)
     print(f"  Saved: {output_path}")
 
+    # ─── Denoise output ───
+    if denoise:
+        t0 = time.time()
+        denoised_y = denoise_dm_blocks(y_full, pred_map, gs=GS, d=7, sigma_color=75, sigma_space=75)
+
+        # Merge Y back with original UV (YCbCr)
+        ycbcr = cv2.cvtColor(bgr, cv2.COLOR_BGR2YCrCb).astype(np.float64)
+        ycbcr[:, :, 0] = denoised_y
+        denoised_bgr = cv2.cvtColor(ycbcr.astype(np.uint8), cv2.COLOR_YCrCb2BGR)
+
+        denoised_path = output_path.replace('_cnn.png', '_denoised.png')
+        cv2.imwrite(denoised_path, denoised_bgr)
+        print(f"  Denoised: {denoised_path} [{time.time() - t0:.1f}s]")
+
 
 def main():
     force_recompute = "--force-recompute" in sys.argv
+    do_denoise = "--denoise" in sys.argv
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
+    if do_denoise:
+        print("  Mode: overlay + 7x7 bilateral denoise on DM blocks")
 
     model = MosquitoDenoiseCNN().to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device), strict=False)
     model.eval()
     print(f"Model loaded from {MODEL_PATH}")
 
-    args = [a for a in sys.argv[1:] if a != "--force-recompute"]
+    skip_flags = {"--force-recompute", "--denoise"}
+    args = [a for a in sys.argv[1:] if a not in skip_flags]
 
     if len(args) > 0:
         arg = args[0]
         if arg == '--batch':
+            batch_dir = args[1] if len(args) > 1 else TEST_DIR
             os.makedirs(OUTPUT_DIR, exist_ok=True)
-            bmps = sorted([f for f in os.listdir(TEST_DIR) if f.lower().endswith('.bmp')])
-            print(f"Processing {len(bmps)} images...\n")
+            bmps = sorted([f for f in os.listdir(batch_dir) if f.lower().endswith('.bmp')])
+            print(f"Processing {len(bmps)} images from {batch_dir}...\n")
             for b in bmps:
-                bmp_path = os.path.join(TEST_DIR, b)
+                bmp_path = os.path.join(batch_dir, b)
                 out_path = os.path.join(OUTPUT_DIR, b.replace('.bmp', '_cnn.png'))
                 t0 = time.time()
                 print(f"[{b}]")
-                predict_image(model, device, bmp_path, out_path, force_recompute=force_recompute)
+                predict_image(model, device, bmp_path, out_path,
+                              force_recompute=force_recompute, denoise=do_denoise)
                 print(f"  [{time.time() - t0:.1f}s]\n")
         else:
             bmp_path = arg if os.path.exists(arg) else os.path.join(TEST_DIR, arg)
             out_path = os.path.join(OUTPUT_DIR, os.path.basename(bmp_path).replace('.bmp', '_cnn.png'))
             print(f"\nProcessing: {bmp_path}")
-            predict_image(model, device, bmp_path, out_path, force_recompute=force_recompute)
+            predict_image(model, device, bmp_path, out_path,
+                          force_recompute=force_recompute, denoise=do_denoise)
     else:
         print("Usage:")
-        print("  python predict_cnn_with_feature_cache.py <bmp_path|filename>       单张图片")
-        print("  python predict_cnn_with_feature_cache.py --batch                  批量处理 test_data 下所有图片")
-        print("  python predict_cnn_with_feature_cache.py <bmp> --force-recompute  忽略已有特征缓存重新计算")
+        print("  python predict_cnn_with_feature_cache.py <bmp_path|filename>                单张图片")
+        print("  python predict_cnn_with_feature_cache.py --batch [目录]                     批量处理（默认 test_data）")
+        print("  python predict_cnn_with_feature_cache.py --batch [目录] --denoise           批量+去噪")
+        print("  python predict_cnn_with_feature_cache.py --batch [目录] --force-recompute   忽略缓存重算")
 
 
 if __name__ == "__main__":
