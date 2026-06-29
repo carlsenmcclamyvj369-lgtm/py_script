@@ -24,6 +24,8 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
 FEATURE_IDX = None  # set at runtime
+LOW_VAR_TH = 60
+HIGH_VAR_TH = 500
 
 
 def get_block(map2d, bi, bj):
@@ -57,8 +59,8 @@ def compute_grid_features(y_full):
             bv = get_block(var_map, bi, bj)
             if len(bv) > 0:
                 feats[0] = float(np.mean(bv))          # mean_var
-                feats[1] = float(np.sum(bv < 100))     # low_var_count
-                feats[2] = float(np.sum(bv > 500))     # high_var_count
+                feats[1] = float(np.sum(bv < LOW_VAR_TH))     # low_var_count
+                feats[2] = float(np.sum(bv > HIGH_VAR_TH))     # high_var_count
 
             # edge features: edge_strength, edge_orientation_conf
             bh_e = get_block(h_edge, bi, bj)
