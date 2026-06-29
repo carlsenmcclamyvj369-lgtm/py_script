@@ -19,8 +19,9 @@ import feature_compute_reference as fcr
 SCRIPT_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
 # TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
-# TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
-TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
+TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
+# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
+# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
@@ -169,23 +170,22 @@ def predict_image(model, device, bmp_path, output_path):
     grid = compute_grid_features(y_full)
     print(f"[{time.time()-t0:.0f}s]")
 
-    div_arr = np.array([NORM_DIV[f] for f in features_list], dtype=np.float32)
-
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
     t0 = time.time()
+
+    div_arr = np.array([NORM_DIV[f] for f in features_list], dtype=np.float32)
 
     pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
     patches = []
     coords = []
 
-    for bi in range(0, gh):
-        for bj in range(0, gw):
+    for bi in range(gh):
+        for bj in range(gw):
             neigh = np.zeros((81, 16), dtype=np.float32)
             for i, (dr, dc) in enumerate(OFFSETS_9x9):
-                dr1 = min(max(dr + dr, 0), gh-1)
-                dc1 = min(max(dc + dc, 0), gw-1)
-                fv = grid[dr1, dc1, f_idx]
-                neigh[i] = np.clip(fv / div_arr, 0, 1)
+                pi = min(max(bi + dr, 0), gh - 1)
+                pj = min(max(bj + dc, 0), gw - 1)
+                neigh[i] = np.clip(grid[pi, pj] / div_arr, 0, 1)
             patch = neigh.reshape(9, 9, 16).transpose(2, 0, 1)
             patches.append(patch)
             coords.append((bi, bj))
@@ -209,16 +209,17 @@ def predict_image(model, device, bmp_path, output_path):
 
     for bi in range(gh):
         for bj in range(gw):
+            p = pred_map[bi, bj]
+            if np.isnan(p) or p <= 0.5:
+                continue
             y1, y2 = bi*GS, min(bi*GS+GS, H)
             x1, x2 = bj*GS, min(bj*GS+GS, W)
-            p = pred_map[bi, bj]
-            if np.isnan(p):
-                continue
-            if p > 0.5:
-                overlay = display[y1:y2, x1:x2].astype(np.float64)
-                overlay[:, :, 2] = np.clip(overlay[:, :, 2]*0.6 + 255*0.4, 0, 255)
-                display[y1:y2, x1:x2] = overlay.astype(np.uint8)
-            cv2.rectangle(display, (x1, y1), (x2, y2), (100, 100, 100), 1)
+            overlay = display[y1:y2, x1:x2].astype(np.float64)
+            overlay[:, :, 2] = np.clip(overlay[:, :, 2]*0.6 + 255*0.4, 0, 255)
+            display[y1:y2, x1:x2] = overlay.astype(np.uint8)
+
+    display[0::8, :] = (100, 100, 100)
+    display[:, 0::8] = (100, 100, 100)
 
     cv2.putText(display, f"CNN DM: {dm_count}/{valid_count} ({100*dm_count/max(valid_count,1):.1f}%)",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -230,18 +231,24 @@ def predict_image(model, device, bmp_path, output_path):
     # d=7            → 邻域直径（kernel size）
     # sigmaColor    → 颜色空间标准差
     # sigmaSpace    → 坐标空间标准差
-    filtered_img = cv2.bilateralFilter(bgr, d=7)
+    filtered_img = cv2.bilateralFilter(bgr, d=7, sigmaColor=50, sigmaSpace=50)
 
     pred_map_8x8 = pred_map.repeat(8, axis=0).repeat(8, axis=1)
-    out_img = filtered_img * pred_map_8x8 + bgr * (1-pred_map_8x8)
+    pred_map_8x8_crop = pred_map_8x8[:H, :W]
+    pred_map_3c = pred_map_8x8_crop[..., np.newaxis]  # (H, W, 1)
+    pred_map_3c = np.repeat(pred_map_3c, 3, axis=2)  # (H, W, 3)
+
+    bgr = bgr.astype(np.float32)
+    filtered_img_float = filtered_img.astype(np.float32)
+    out_img = filtered_img_float * pred_map_3c + bgr * (1 - pred_map_3c)
+    out_img = np.clip(out_img, 0, 255).astype(np.uint8)
 
     out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_bilater.bmp")
     cv2.imwrite(str(out_path), filtered_img)
     out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_pred8x8.bmp")
-    cv2.imwrite(str(out_path), pred_map_8x8)
+    cv2.imwrite(str(out_path), (pred_map_3c*255).astype(np.uint8))
     out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_out.bmp")
     cv2.imwrite(str(out_path), out_img)
-
 
 def main():
     global FEATURE_IDX
@@ -277,6 +284,16 @@ def main():
         print("Usage:")
         print("  python predict_cnn.py <bmp_path|filename>  单张图片")
         print("  python predict_cnn.py --batch              批量处理 test_data 下所有图片")
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        bmps = sorted([f for f in os.listdir(TEST_DIR) if f.endswith('.bmp')])
+        print(f"Processing {len(bmps)} images...\n")
+        for b in bmps:
+            bmp_path = os.path.join(TEST_DIR, b)
+            out_path = os.path.join(OUTPUT_DIR, b.replace('.bmp', '_cnn.png'))
+            t0 = time.time()
+            print(f"[{b}]")
+            predict_image(model, device, bmp_path, out_path)
+            print(f"  [{time.time() - t0:.0f}s]\n")
 
 
 if __name__ == "__main__":
