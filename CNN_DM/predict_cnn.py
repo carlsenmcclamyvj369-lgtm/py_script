@@ -18,7 +18,8 @@ import feature_compute_reference as fcr
 SCRIPT_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
 # TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
-TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
+# TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
+TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
@@ -36,84 +37,118 @@ def get_block(map2d, bi, bj):
 
 
 def compute_grid_features(y_full):
-    """Compute only the 16 CNN features for every grid block. Returns (gh, gw, 16)."""
+    """Compute 16 CNN features using vectorized torch ops. Returns (gh, gw, 16) numpy."""
     H, W = y_full.shape
     gh, gw = H // GS, W // GS
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    # Pixel-level maps (numpy + cv2)
     var_map = fcr.compute_var_map(y_full)
     h_edge, v_edge = fcr.compute_edge_maps(y_full)
 
-    total = 16
-    grid = np.zeros((gh, gw, total), dtype=np.float32)
-    for bi in range(gh):
-        for bj in range(gw):
-            y1, y2 = bi*GS, min(bi*GS+GS, H)
-            x1, x2 = bj*GS, min(bj*GS+GS, W)
-            if y2-y1 < 2 or x2-x1 < 2:
-                continue
-            block = y_full[y1:y2, x1:x2]
-            bh, bw = block.shape
-            feats = np.zeros(total, dtype=np.float32)
+    # Trim and convert to torch
+    sl = slice(None, gh * GS), slice(None, gw * GS)
+    y_t = torch.from_numpy(y_full[sl].copy()).float().to(device)
+    var_t = torch.from_numpy(var_map[sl].copy()).float().to(device)
+    he_t = torch.from_numpy(h_edge[sl].copy()).float().to(device)
+    ve_t = torch.from_numpy(v_edge[sl].copy()).float().to(device)
 
-            # var features: mean_var, low_var_count, high_var_count
-            bv = get_block(var_map, bi, bj)
-            if len(bv) > 0:
-                feats[0] = float(np.mean(bv))          # mean_var
-                feats[1] = float(np.sum(bv < LOW_VAR_TH))     # low_var_count
-                feats[2] = float(np.sum(bv > HIGH_VAR_TH))     # high_var_count
+    # (gh, 8, gw, 8) -> (gh, gw, 8, 8)
+    def tb(t):
+        return t.reshape(gh, GS, gw, GS).permute(0, 2, 1, 3).contiguous()
 
-            # edge features: edge_strength, edge_orientation_conf
-            bh_e = get_block(h_edge, bi, bj)
-            bv_e = get_block(v_edge, bi, bj)
-            if len(bh_e) > 0 and len(bv_e) > 0:
-                hs = float(np.mean(bh_e))
-                vs = float(np.mean(bv_e))
-                ms = max(hs, vs)
-                feats[3] = ms                           # edge_strength
-                feats[4] = abs(hs - vs) / ms if ms > 1e-6 else 0.0  # edge_orientation_conf
+    yb = tb(y_t); vb = tb(var_t); hb = tb(he_t); veb = tb(ve_t)
+    vf = vb.reshape(gh, gw, -1)
+    hf = hb.reshape(gh, gw, -1)
+    vff = veb.reshape(gh, gw, -1)
 
-            # second diff features: second_diff_max, second_diff_min_max
-            row_energies = []
-            for ry in range(bh):
-                v = block[ry, :]
-                if len(v) >= 3:
-                    d2 = v[:-2] - 2*v[1:-1] + v[2:]
-                    row_energies.append(float(np.mean(np.abs(d2))))
-            col_energies = []
-            for rx in range(bw):
-                v = block[:, rx]
-                if len(v) >= 3:
-                    d2 = v[:-2] - 2*v[1:-1] + v[2:]
-                    col_energies.append(float(np.mean(np.abs(d2))))
-            row_sd = float(np.mean(row_energies)) if row_energies else 0.0
-            col_sd = float(np.mean(col_energies)) if col_energies else 0.0
-            feats[7] = max(row_sd, col_sd)              # second_diff_max
-            feats[8] = (min(row_sd, col_sd) / max(row_sd, col_sd)) if max(row_sd, col_sd) > 0 else 0.0  # second_diff_min_max
+    # NaN-safe helpers
+    def sf_mean(a):
+        mask = torch.isnan(a)
+        return torch.where(mask, torch.tensor(0.0, device=device), a).sum(dim=-1) / (~mask).float().sum(dim=-1).clamp(min=1)
 
-            # row/col diff: row_diff_max, col_diff_max
-            row_means = [float(block[r, :].mean()) for r in range(bh)]
-            row_diffs = [abs(row_means[r+1]-row_means[r]) for r in range(bh-1)] if bh >= 2 else [0.0]
-            col_means = [float(block[:, c].mean()) for c in range(bw)]
-            col_diffs = [abs(col_means[c+1]-col_means[c]) for c in range(bw-1)] if bw >= 2 else [0.0]
-            feats[13] = float(np.max(row_diffs)) if row_diffs else 0.0   # row_diff_max
-            feats[15] = float(np.max(col_diffs)) if col_diffs else 0.0   # col_diff_max
+    def sf_count_lt(a, th):
+        mask = torch.isnan(a)
+        return ((~mask) & (a < th)).sum(dim=-1).float()
 
-            # ringing features
-            try:
-                ringing = fcr.ringing_stats_for_block(block, bh, bw)
-                if ringing:
-                    feats[5] = ringing['col_ringing_mean']       # col_ringing_mean
-                    feats[6] = ringing['row_ringing_mean']       # row_ringing_mean
-                    feats[9] = ringing['profile_ringing_mean']   # profile_ringing_mean
-                    feats[10] = ringing['ringing_mean_min']      # ringing_mean_min
-                    feats[11] = ringing['ringing_mean_min_max']  # ringing_mean_min_max
-                    feats[12] = ringing['row_ringing_max']       # row_ringing_max
-                    feats[14] = ringing['col_ringing_max']       # col_ringing_max
-            except Exception:
-                pass
+    def sf_count_gt(a, th):
+        mask = torch.isnan(a)
+        return ((~mask) & (a > th)).sum(dim=-1).float()
 
-            grid[bi, bj] = feats
-    return grid
+    grid = torch.zeros((gh, gw, 16), device=device)
+
+    # 0-2: var
+    grid[..., 0] = sf_mean(vf)
+    grid[..., 1] = sf_count_lt(vf, LOW_VAR_TH)
+    grid[..., 2] = sf_count_gt(vf, HIGH_VAR_TH)
+
+    # 3-4: edge
+    hs = sf_mean(hf); vs = sf_mean(vff); ms = torch.max(hs, vs)
+    grid[..., 3] = ms
+    grid[..., 4] = torch.where(ms > 1e-6, (hs - vs).abs() / ms, torch.tensor(0.0, device=device))
+
+    # 7-8: second diff (on yb, no NaN)
+    d2r = yb[..., :-2] - 2.0 * yb[..., 1:-1] + yb[..., 2:]       # (gh,gw,8,6)
+    row_sd = d2r.abs().mean(dim=-1).mean(dim=-1)                  # (gh,gw)
+    d2c = yb[:, :, :-2, :] - 2.0 * yb[:, :, 1:-1, :] + yb[:, :, 2:, :]  # (gh,gw,6,8)
+    col_sd = d2c.abs().mean(dim=-2).mean(dim=-1)                  # (gh,gw)
+    grid[..., 7] = torch.max(row_sd, col_sd)
+    sd_mx = torch.max(row_sd, col_sd)
+    grid[..., 8] = torch.where(sd_mx > 0, torch.min(row_sd, col_sd) / sd_mx, torch.tensor(0.0, device=device))
+
+    # 13, 15: row/col diff
+    rm = yb.mean(dim=-1)                                           # (gh,gw,8)
+    rd = (rm[..., 1:] - rm[..., :-1]).abs()                        # (gh,gw,7)
+    grid[..., 13] = rd.amax(dim=-1)
+    cm = yb.mean(dim=-2)
+    cd = (cm[..., 1:] - cm[..., :-1]).abs()
+    grid[..., 15] = cd.amax(dim=-1)
+
+    # ── Ringing: batched torch ──
+    def _ringing_batch(v):
+        dv = torch.diff(v, dim=-1)
+        if dv.shape[-1] < 2:
+            return torch.zeros(v.shape[:-1], device=device), \
+                   torch.zeros(v.shape[:-1], device=device), \
+                   torch.zeros(v.shape[:-1], device=device), \
+                   torch.zeros(v.shape[:-1], device=device)
+        d2 = torch.diff(v, n=2, dim=-1)
+        dyn = v.amax(dim=-1) - v.amin(dim=-1)
+        d2_en = d2.abs().mean(dim=-1)
+        # sign changes
+        sgn = torch.sign(dv)
+        sgn[torch.abs(dv) < 3.0] = 0
+        last = torch.zeros(v.shape[:-1], dtype=torch.long, device=device)
+        chg = torch.zeros(v.shape[:-1], dtype=torch.long, device=device)
+        for i in range(sgn.shape[-1]):
+            nz = sgn[..., i] != 0
+            hp = last != 0
+            df = nz & hp & (sgn[..., i] != last)
+            chg = torch.where(df, chg + 1, chg)
+            last = torch.where(nz, sgn[..., i].long(), last)
+
+        def norm_(x, lo, hi):
+            return torch.clamp((x - lo) / (hi - lo), 0.0, 1.0) if hi > lo else torch.zeros_like(x)
+
+        ds_ = norm_(dyn.float(), 20.0, 120.0)
+        d2s_ = norm_(d2_en.float(), 5.0, 60.0)
+        ss_ = norm_(chg.float(), 1.0, 4.0)
+        return 0.45 * ds_ + 0.35 * d2s_ + 0.20 * ss_, ds_, d2s_, ss_
+
+    rt, _, _, _ = _ringing_batch(yb)           # (gh,gw,8) row totals
+    ct, _, _, _ = _ringing_batch(yb.permute(0, 1, 3, 2))  # (gh,gw,8) col totals
+
+    grid[..., 5] = ct.mean(dim=-1)             # col_ringing_mean
+    grid[..., 6] = rt.mean(dim=-1)             # row_ringing_mean
+    grid[..., 9] = torch.cat([rt, ct], dim=-1).mean(dim=-1)  # profile_ringing_mean
+    rmn = torch.min(rt.mean(dim=-1), ct.mean(dim=-1))
+    rmx = torch.max(rt.mean(dim=-1), ct.mean(dim=-1))
+    grid[..., 10] = rmn                        # ringing_mean_min
+    grid[..., 11] = torch.where(rmx > 0, rmn / rmx, torch.tensor(0.0, device=device))  # ringing_mean_min_max
+    grid[..., 12] = rt.amax(dim=-1)            # row_ringing_max
+    grid[..., 14] = ct.amax(dim=-1)            # col_ringing_max
+
+    return grid.cpu().numpy()
 
 
 def predict_image(model, device, bmp_path, output_path):
