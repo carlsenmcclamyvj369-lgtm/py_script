@@ -175,28 +175,25 @@ def predict_image(model, device, bmp_path, output_path):
 
     div_arr = np.array([NORM_DIV[f] for f in features_list], dtype=np.float32)
 
+    # Repeat-pad grid → sliding_window_view → fully vectorized
+    from numpy.lib.stride_tricks import sliding_window_view
+    grid_pad = np.pad(grid, ((4, 4), (4, 4), (0, 0)), mode='edge')
+    grid_norm = np.clip(grid_pad / div_arr, 0, 1)
+    windows = sliding_window_view(grid_norm, (9, 9), axis=(0, 1))
+    # windows shape: (gh, gw, n_feat, 9, 9) → (gh, gw, 9, 9, n_feat)
+    windows = windows.transpose(0, 1, 3, 4, 2)
+    X = np.ascontiguousarray(windows).reshape(gh * gw, 9, 9, 16).transpose(0, 3, 1, 2)
+    # print("grid shape: ", grid.shape)
+    # print("grid_pad shape: ", grid_pad.shape)
+    # print("windows shape: ", windows.shape)
+    # print("X shape: ", X.shape)
+
     pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
-    patches = []
-    coords = []
-
-    for bi in range(gh):
-        for bj in range(gw):
-            neigh = np.zeros((81, 16), dtype=np.float32)
-            for i, (dr, dc) in enumerate(OFFSETS_9x9):
-                pi = min(max(bi + dr, 0), gh - 1)
-                pj = min(max(bj + dc, 0), gw - 1)
-                neigh[i] = np.clip(grid[pi, pj] / div_arr, 0, 1)
-            patch = neigh.reshape(9, 9, 16).transpose(2, 0, 1)
-            patches.append(patch)
-            coords.append((bi, bj))
-
-    if patches:
-        X = np.stack(patches, axis=0)
+    if len(X) > 0:
         X_t = torch.tensor(X, dtype=torch.float32, device=device)
         with torch.no_grad():
             probs = model(X_t).cpu().numpy().flatten()
-        for idx, (bi, bj) in enumerate(coords):
-            pred_map[bi, bj] = probs[idx]
+        pred_map.ravel()[:] = probs
 
     print(f"[{time.time()-t0:.0f}s]")
 
@@ -262,38 +259,16 @@ def main():
     model.eval()
     print(f"Model loaded from {MODEL_PATH}")
 
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        if arg == '--batch':
-            os.makedirs(OUTPUT_DIR, exist_ok=True)
-            bmps = sorted([f for f in os.listdir(TEST_DIR) if f.endswith('.bmp')])
-            print(f"Processing {len(bmps)} images...\n")
-            for b in bmps:
-                bmp_path = os.path.join(TEST_DIR, b)
-                out_path = os.path.join(OUTPUT_DIR, b.replace('.bmp', '_cnn.png'))
-                t0 = time.time()
-                print(f"[{b}]")
-                predict_image(model, device, bmp_path, out_path)
-                print(f"  [{time.time()-t0:.0f}s]\n")
-        else:
-            bmp_path = arg if os.path.exists(arg) else os.path.join(TEST_DIR, arg)
-            out_path = os.path.join(OUTPUT_DIR, os.path.basename(bmp_path).replace('.bmp', '_cnn.png'))
-            print(f"\nProcessing: {bmp_path}")
-            predict_image(model, device, bmp_path, out_path)
-    else:
-        print("Usage:")
-        print("  python predict_cnn.py <bmp_path|filename>  单张图片")
-        print("  python predict_cnn.py --batch              批量处理 test_data 下所有图片")
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        bmps = sorted([f for f in os.listdir(TEST_DIR) if f.endswith('.bmp')])
-        print(f"Processing {len(bmps)} images...\n")
-        for b in bmps:
-            bmp_path = os.path.join(TEST_DIR, b)
-            out_path = os.path.join(OUTPUT_DIR, b.replace('.bmp', '_cnn.png'))
-            t0 = time.time()
-            print(f"[{b}]")
-            predict_image(model, device, bmp_path, out_path)
-            print(f"  [{time.time() - t0:.0f}s]\n")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    bmps = sorted([f for f in os.listdir(TEST_DIR) if f.endswith('.bmp')])
+    print(f"Processing {len(bmps)} images...\n")
+    for b in bmps:
+        bmp_path = os.path.join(TEST_DIR, b)
+        out_path = os.path.join(OUTPUT_DIR, b.replace('.bmp', '_cnn.png'))
+        t0 = time.time()
+        print(f"[{b}]")
+        predict_image(model, device, bmp_path, out_path)
+        print(f"  [{time.time() - t0:.0f}s]\n")
 
 
 if __name__ == "__main__":
