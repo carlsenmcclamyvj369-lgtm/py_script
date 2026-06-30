@@ -10,22 +10,22 @@ from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, r
 # 1. 只使用这16个特征
 # =========================
 features_list = [
-    'mean_var',
-    'low_var_count',
-    'high_var_count',
-    'edge_strength',
-    'edge_orientation_conf',
-    'col_ringing_mean',
-    'row_ringing_mean',
-    'second_diff_max',
-    'second_diff_min_max',
-    'ringing_mean_max',
-    'ringing_mean_min',
-    'ringing_mean_min_max',
-    'row_ringing_max',
-    'row_diff_max',
-    'col_ringing_max',
-    'col_diff_max'
+    'mean_var',              # 1
+    'low_var_count',         # 2
+    'high_var_count',        # 3
+    'edge_strength',         # 4
+    'edge_orientation_conf', # 5
+    'second_diff_max',       # 6
+    'second_diff_min_max',   # 7
+    'ringing_mean_max',      # 8
+    'ringing_mean_min',      # 9
+    'ringing_mean_min_max',  # 10
+    'row_ringing_max',       # 11
+    'row_ringing_mean',      # 12
+    'col_ringing_max',       # 13
+    'col_ringing_mean',      # 14
+    'row_diff_max',          # 15
+    'col_diff_max',          # 16
 ]
 
 # =========================
@@ -33,23 +33,23 @@ features_list = [
 #    根据 compute_labeled_features.py/markdown
 # =========================
 NORM_DIV = {
-    'mean_var': 1020.0,
-    'low_var_count': 64.0,
-    'high_var_count': 64.0,
-    'edge_strength': 255.0,
-    'edge_orientation_conf': 1.0,
-    'col_ringing_mean': 1.0,
-    'row_ringing_mean': 1.0,
-    'second_diff_max': 510.0,
-    'second_diff_min_max': 1.0,
-    'ringing_mean_max': 1.0,
-    'ringing_mean_min': 1.0,
-    'ringing_mean_min_max': 1.0,
-    'row_ringing_max': 1.0,
-    'col_ringing_max': 1.0,
+    'mean_var': 1020.0,             # 1
+    'low_var_count': 64.0,          # 2
+    'high_var_count': 64.0,         # 3
+    'edge_strength': 255.0,         # 4
+    'edge_orientation_conf': 1.0,   # 5
+    'second_diff_max': 510.0,       # 6
+    'second_diff_min_max': 1.0,     # 7
+    'ringing_mean_max': 1.0,        # 8
+    'ringing_mean_min': 1.0,        # 9
+    'ringing_mean_min_max': 1.0,    # 10
+    'row_ringing_max': 1.0,         # 11
+    'row_ringing_mean': 1.0,        # 12
+    'col_ringing_max': 1.0,         # 13
+    'col_ringing_mean': 1.0,        # 14
     # row/col diff 是亮度差，按 255 归一化
-    'row_diff_max': 255.0,
-    'col_diff_max': 255.0,
+    'row_diff_max': 255.0,          # 15
+    'col_diff_max': 255.0,          # 16
 }
 
 def normalize_features(df, features_list):

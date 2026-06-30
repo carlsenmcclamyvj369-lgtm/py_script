@@ -90,22 +90,22 @@ def compute_grid_features(y_full):
     grid[..., 3] = ms
     grid[..., 4] = torch.where(ms > 1e-6, (hs - vs).abs() / ms, torch.tensor(0.0, device=device))
 
-    # 7-8: second diff (on yb, no NaN)
-    d2r = yb[..., :-2] - 2.0 * yb[..., 1:-1] + yb[..., 2:]       # (gh,gw,8,6)
-    row_sd = d2r.abs().mean(dim=-1).mean(dim=-1)                  # (gh,gw)
-    d2c = yb[:, :, :-2, :] - 2.0 * yb[:, :, 1:-1, :] + yb[:, :, 2:, :]  # (gh,gw,6,8)
-    col_sd = d2c.abs().mean(dim=-2).mean(dim=-1)                  # (gh,gw)
-    grid[..., 7] = torch.max(row_sd, col_sd)
+    # 5-6: second diff
+    d2r = yb[..., :-2] - 2.0 * yb[..., 1:-1] + yb[..., 2:]
+    row_sd = d2r.abs().mean(dim=-1).mean(dim=-1)
+    d2c = yb[:, :, :-2, :] - 2.0 * yb[:, :, 1:-1, :] + yb[:, :, 2:, :]
+    col_sd = d2c.abs().mean(dim=-2).mean(dim=-1)
     sd_mx = torch.max(row_sd, col_sd)
-    grid[..., 8] = torch.where(sd_mx > 0, torch.min(row_sd, col_sd) / sd_mx, torch.tensor(0.0, device=device))
+    grid[..., 5] = sd_mx                                     # second_diff_max
+    grid[..., 6] = torch.where(sd_mx > 0, torch.min(row_sd, col_sd) / sd_mx, torch.tensor(0.0, device=device))  # second_diff_min_max
 
-    # 13, 15: row/col diff
-    rm = yb.mean(dim=-1)                                           # (gh,gw,8)
-    rd = (rm[..., 1:] - rm[..., :-1]).abs()                        # (gh,gw,7)
-    grid[..., 13] = rd.amax(dim=-1)
+    # 14-15: row/col diff
+    rm = yb.mean(dim=-1)
+    rd = (rm[..., 1:] - rm[..., :-1]).abs()
+    grid[..., 14] = rd.amax(dim=-1)                        # row_diff_max
     cm = yb.mean(dim=-2)
     cd = (cm[..., 1:] - cm[..., :-1]).abs()
-    grid[..., 15] = cd.amax(dim=-1)
+    grid[..., 15] = cd.amax(dim=-1)                        # col_diff_max
 
     # ── Ringing: batched torch ──
     def _ringing_batch(v):
@@ -141,15 +141,18 @@ def compute_grid_features(y_full):
     rt, _, _, _ = _ringing_batch(yb)           # (gh,gw,8) row totals
     ct, _, _, _ = _ringing_batch(yb.permute(0, 1, 3, 2))  # (gh,gw,8) col totals
 
-    grid[..., 5] = ct.mean(dim=-1)             # col_ringing_mean
-    grid[..., 6] = rt.mean(dim=-1)             # row_ringing_mean
-    grid[..., 9] = torch.cat([rt, ct], dim=-1).mean(dim=-1)  # profile_ringing_mean
-    rmn = torch.min(rt.mean(dim=-1), ct.mean(dim=-1))
-    rmx = torch.max(rt.mean(dim=-1), ct.mean(dim=-1))
-    grid[..., 10] = rmn                        # ringing_mean_min
-    grid[..., 11] = torch.where(rmx > 0, rmn / rmx, torch.tensor(0.0, device=device))  # ringing_mean_min_max
-    grid[..., 12] = rt.amax(dim=-1)            # row_ringing_max
-    grid[..., 14] = ct.amax(dim=-1)            # col_ringing_max
+    rm_mean = rt.mean(dim=-1)                  # row_ringing_mean
+    cm_mean = ct.mean(dim=-1)                  # col_ringing_mean
+    rmx = torch.max(rm_mean, cm_mean)          # ringing_mean_max
+    rmn = torch.min(rm_mean, cm_mean)          # ringing_mean_min
+
+    grid[..., 7] = rmx                                             # ringing_mean_max
+    grid[..., 8] = rmn                                             # ringing_mean_min
+    grid[..., 9] = torch.where(rmx > 0, rmn / rmx, torch.tensor(0.0, device=device))  # ringing_mean_min_max
+    grid[..., 10] = rt.amax(dim=-1)                                 # row_ringing_max
+    grid[..., 11] = rm_mean                                         # row_ringing_mean
+    grid[..., 12] = ct.amax(dim=-1)                                 # col_ringing_max
+    grid[..., 13] = cm_mean                                         # col_ringing_mean
 
     return grid.cpu().numpy()
 
