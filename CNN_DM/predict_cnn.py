@@ -18,11 +18,12 @@ import feature_compute_reference as fcr
 # ─── Config ───
 SCRIPT_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
-# TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
-TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
+TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
+# TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
@@ -156,6 +157,7 @@ def compute_grid_features(y_full):
 def predict_image(model, device, bmp_path, output_path):
     """Run CNN on a BMP, save overlay."""
     bgr = cv2.imread(bmp_path, cv2.IMREAD_COLOR)
+
     if bgr is None:
         print(f"ERROR: cannot read {bmp_path}")
         return
@@ -235,17 +237,18 @@ def predict_image(model, device, bmp_path, output_path):
     pred_map_3c = pred_map_8x8_crop[..., np.newaxis]  # (H, W, 1)
     pred_map_3c = np.repeat(pred_map_3c, 3, axis=2)  # (H, W, 3)
 
-    bgr = bgr.astype(np.float32)
-    filtered_img_float = filtered_img.astype(np.float32)
-    out_img = filtered_img_float * pred_map_3c + bgr * (1 - pred_map_3c)
+    # 保存原始输入（在 bgr 转 float32 之前）
+    stem = Path(bmp_path).stem
+    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_in.bmp"), bgr)
+
+    bgr_f32 = bgr.astype(np.float32)
+    filtered_f32 = filtered_img.astype(np.float32)
+    out_img = filtered_f32 * pred_map_3c + bgr_f32 * (1 - pred_map_3c)
     out_img = np.clip(out_img, 0, 255).astype(np.uint8)
 
-    out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_bilater.bmp")
-    cv2.imwrite(str(out_path), filtered_img)
-    out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_pred8x8.bmp")
-    cv2.imwrite(str(out_path), (pred_map_3c*255).astype(np.uint8))
-    out_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_out.bmp")
-    cv2.imwrite(str(out_path), out_img)
+    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_bilater.bmp"), filtered_img)
+    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_pred8x8.bmp"), (pred_map_3c * 255).astype(np.uint8))
+    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_out.bmp"), out_img)
 
 def main():
     global FEATURE_IDX

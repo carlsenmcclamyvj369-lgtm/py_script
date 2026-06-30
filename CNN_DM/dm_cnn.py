@@ -19,7 +19,7 @@ features_list = [
     'row_ringing_mean',
     'second_diff_max',
     'second_diff_min_max',
-    'profile_ringing_mean',
+    'ringing_mean_max',
     'ringing_mean_min',
     'ringing_mean_min_max',
     'row_ringing_max',
@@ -42,7 +42,7 @@ NORM_DIV = {
     'row_ringing_mean': 1.0,
     'second_diff_max': 510.0,
     'second_diff_min_max': 1.0,
-    'profile_ringing_mean': 1.0,
+    'ringing_mean_max': 1.0,
     'ringing_mean_min': 1.0,
     'ringing_mean_min_max': 1.0,
     'row_ringing_max': 1.0,
@@ -74,6 +74,7 @@ class MosquitoPatchDataset(Dataset):
         }
         df = df.rename(columns=rename_map)
         missing = [c for c in features_list if c not in df.columns]
+        # pr
         if len(missing) > 0:
             raise ValueError(f"Missing feature columns: {missing}")
         self.patch_size = patch_size
@@ -134,8 +135,8 @@ class MosquitoDenoiseCNN(nn.Module):
 # 5. 以下训练代码仅在直接运行时执行
 # =========================
 if __name__ == "__main__":
-    dm_dataset = MosquitoPatchDataset("9x9_dm.csv", label=1)
-    not_dm_dataset = MosquitoPatchDataset("9x9_not_dm.csv", label=0)
+    dm_dataset = MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm.csv", label=1)
+    not_dm_dataset = MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm.csv", label=0)
 
     # 按 8:2 分层切分训练/验证集
     val_ratio = 0.2
