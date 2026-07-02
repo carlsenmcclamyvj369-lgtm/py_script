@@ -18,12 +18,12 @@ import feature_compute_reference as fcr
 # ─── Config ───
 SCRIPT_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
-TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
+# TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
+TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
@@ -236,8 +236,12 @@ def predict_image(model, device, bmp_path, output_path):
     filtered_img = cv2.bilateralFilter(bgr, d=7, sigmaColor=50, sigmaSpace=50)
 
     pred_map_8x8 = pred_map.repeat(8, axis=0).repeat(8, axis=1)
-    pred_map_8x8_crop = pred_map_8x8[:H, :W]
-    pred_map_3c = pred_map_8x8_crop[..., np.newaxis]  # (H, W, 1)
+    # pred_map_8x8 shape: (gh*8, gw*8), 可能小于 (H, W) 如果 H/W 不是 8 的倍数
+    ph = H - pred_map_8x8.shape[0]
+    pw = W - pred_map_8x8.shape[1]
+    if ph > 0 or pw > 0:
+        pred_map_8x8 = np.pad(pred_map_8x8, ((0, ph), (0, pw)), mode='edge')
+    pred_map_3c = pred_map_8x8[..., np.newaxis]  # (H, W, 1)
     pred_map_3c = np.repeat(pred_map_3c, 3, axis=2)  # (H, W, 3)
 
     # 保存原始输入（在 bgr 转 float32 之前）
