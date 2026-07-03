@@ -18,12 +18,12 @@ import feature_compute_reference as fcr
 # ─── Config ───
 SCRIPT_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
-# TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
+TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
-TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
+# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
@@ -253,7 +253,7 @@ def predict_image(model, device, bmp_path, output_path):
     out_img = filtered_f32 * pred_map_3c + bgr_f32 * (1 - pred_map_3c)
     out_img = np.clip(out_img, 0, 255).astype(np.uint8)
 
-    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_bilater.bmp"), filtered_img)
+    # cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_bilater.bmp"), filtered_img)
     cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_pred8x8.bmp"), (pred_map_3c * 255).astype(np.uint8))
     cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_out.bmp"), out_img)
 

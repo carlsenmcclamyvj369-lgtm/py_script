@@ -135,8 +135,19 @@ class MosquitoDenoiseCNN(nn.Module):
 # 5. 以下训练代码仅在直接运行时执行
 # =========================
 if __name__ == "__main__":
-    dm_dataset = MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm.csv", label=1)
-    not_dm_dataset = MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm.csv", label=0)
+    # DM datasets
+    dm_datasets = [
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm.csv", label=1),
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_merged.csv", label=1),
+    ]
+    # Not DM datasets
+    not_dm_datasets = [
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm.csv", label=0),
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_merged.csv", label=0),
+    ]
+
+    dm_dataset = ConcatDataset(dm_datasets)
+    not_dm_dataset = ConcatDataset(not_dm_datasets)
 
     # 按 8:2 分层切分训练/验证集
     val_ratio = 0.2
