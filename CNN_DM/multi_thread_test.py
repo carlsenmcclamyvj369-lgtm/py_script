@@ -24,9 +24,9 @@ def get_test_case(test_file):
     test_case_cmd = list()
     line = fp.readline()
     while line:
-        if line.strip().startswith("./run_test"):
-            st_res = line.split(' ')
-            test_case = st_res[1]
+        if line.strip().startswith("./run_test") or line.strip().startswith("python"):
+            st_res = line.strip().split()
+            test_case = st_res[-1]
             test_case_list.append(test_case)
             test_case_cmd.append(line)
         line = fp.readline()
@@ -138,8 +138,6 @@ def multi_process_test(folder, test_list_cmd, process_num):
     pool = multiprocessing.Pool(processes = process_num)
     for tc_cmd in test_list_cmd:
         tc_cmd = tc_cmd.strip().replace('\n','').replace('\r','').replace('$1',folder)
-        tc_cmd = tc_cmd + ' >> '+folder+'/output.log'
-        # print(tc_cmd)
         pool.apply_async(run_test, (tc_cmd,))
         time.sleep(4)
     pool.close()
@@ -149,6 +147,9 @@ def multi_process_test(folder, test_list_cmd, process_num):
 
 if __name__ == '__main__':
     opts, args = getopt.getopt(sys.argv[1:],'-h-f:-v',['help','filename=','version'])
+    if len(sys.argv) < 4:
+        print(f"用法: python {sys.argv[0]} <case_list.txt> <output_folder> <进程数>")
+        sys.exit(1)
     test_case_file = sys.argv[1]
     output_folder = sys.argv[2]
     p_num = int(sys.argv[3])

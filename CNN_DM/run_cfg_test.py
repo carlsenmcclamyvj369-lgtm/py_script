@@ -37,8 +37,9 @@ def parse_cfg(path):
 
 
 def main():
-    cfg_path = r"C:\code\py\denoise\scripts\CNN_DM\05.02.25\cfg.txt"
-    base = os.path.dirname(cfg_path)
+    base = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else \
+        os.path.join(os.path.dirname(__file__), "05.02.25")
+    cfg_path = os.path.join(base, "cfg.txt")
     cfg = parse_cfg(cfg_path)
     for k, v in cfg.items():
         print(f"  {k} = {v}")
