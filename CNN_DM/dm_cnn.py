@@ -139,11 +139,12 @@ if __name__ == "__main__":
     dm_datasets = [
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm.csv", label=1),
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_merged.csv", label=1),
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_SR_x3.csv", label=1),
     ]
-    # Not DM datasets
     not_dm_datasets = [
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm.csv", label=0),
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_merged.csv", label=0),
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_SR_x3.csv", label=0),
     ]
 
     dm_dataset = ConcatDataset(dm_datasets)
