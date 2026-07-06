@@ -18,12 +18,12 @@ import feature_compute_reference as fcr
 # ─── Config ───
 SCRIPT_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
-TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
+# TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
+TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
@@ -157,7 +157,7 @@ def compute_grid_features(y_full):
     return grid.cpu().numpy()
 
 
-def predict_image(model, device, bmp_path, output_path):
+def predict_image(model, device, bmp_path, output_path, save_debug=True):
     """Run CNN on a BMP, save overlay."""
     bgr = cv2.imread(bmp_path, cv2.IMREAD_COLOR)
 
@@ -225,9 +225,11 @@ def predict_image(model, device, bmp_path, output_path):
 
     cv2.putText(display, f"CNN DM: {dm_count}/{valid_count} ({100*dm_count/max(valid_count,1):.1f}%)",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-    cv2.imwrite(str(output_path), display)
-    print(f"  Saved: {output_path}")
+    if save_debug:
+        cnn_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_cnn.png")
+        os.makedirs(os.path.dirname(cnn_path) or '.', exist_ok=True)
+        cv2.imwrite(str(cnn_path), display)
+        print(f"  Saved: {cnn_path}")
 
     # 7x7 双边滤波
     # d=7            → 邻域直径（kernel size）
@@ -246,16 +248,19 @@ def predict_image(model, device, bmp_path, output_path):
 
     # 保存原始输入（在 bgr 转 float32 之前）
     stem = Path(bmp_path).stem
-    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_in.bmp"), bgr)
 
     bgr_f32 = bgr.astype(np.float32)
     filtered_f32 = filtered_img.astype(np.float32)
     out_img = filtered_f32 * pred_map_3c + bgr_f32 * (1 - pred_map_3c)
     out_img = np.clip(out_img, 0, 255).astype(np.uint8)
 
-    # cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_bilater.bmp"), filtered_img)
-    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_pred8x8.bmp"), (pred_map_3c * 255).astype(np.uint8))
-    cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_out.bmp"), out_img)
+    if save_debug == True:
+        cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_in.bmp"), bgr)
+        # cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_bilater.bmp"), filtered_img)
+        cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_pred8x8.bmp"), (pred_map_3c * 255).astype(np.uint8))
+    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+    cv2.imwrite(str(output_path), out_img)
+    print(f"  Denoised: {output_path}")
 
 def main():
     global FEATURE_IDX
@@ -274,7 +279,7 @@ def main():
     print(f"Processing {len(bmps)} images...\n")
     for b in bmps:
         bmp_path = os.path.join(TEST_DIR, b)
-        out_path = os.path.join(OUTPUT_DIR, b.replace('.bmp', '_cnn.png'))
+        out_path = os.path.join(OUTPUT_DIR, b.replace('.bmp', '_out.bmp'))
         t0 = time.time()
         print(f"[{b}]")
         predict_image(model, device, bmp_path, out_path)

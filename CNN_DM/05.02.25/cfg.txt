@@ -1,4 +1,4 @@
-INPUT_DIR = C:\code\py\denoise\scripts\CNN_DM\05.02.25
+INPUT_DIR = C:\SW\data\MNR_TEST\MNR_Video2Image\MNR\05.02.25
 OUTPUT_PATH = ./out/
 REG_FILE = ./reg_file.txt
 TAP_PATH = ./out/
