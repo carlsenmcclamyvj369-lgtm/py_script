@@ -185,10 +185,10 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     from numpy.lib.stride_tricks import sliding_window_view
     grid_pad = np.pad(grid, ((4, 4), (4, 4), (0, 0)), mode='edge')
     grid_norm = np.clip(grid_pad / div_arr, 0, 1)
-    windows = sliding_window_view(grid_norm, (9, 9), axis=(0, 1))
+    # windows = sliding_window_view(grid_norm, (9, 9), axis=(0, 1))
     # windows shape: (gh, gw, n_feat, 9, 9) → (gh, gw, 9, 9, n_feat)
-    windows = windows.transpose(0, 1, 3, 4, 2)
-    X = np.ascontiguousarray(windows).reshape(gh * gw, 9, 9, 16).transpose(0, 3, 1, 2)
+    # windows = windows.transpose(0, 1, 3, 4, 2)
+    X = np.ascontiguousarray(grid_norm).reshape( 1, (8+gh) , (8+gw), 16).transpose(0, 3, 1, 2)
     # print("grid shape: ", grid.shape)
     # print("grid_pad shape: ", grid_pad.shape)
     # print("windows shape: ", windows.shape)
