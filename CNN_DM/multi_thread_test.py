@@ -36,20 +36,19 @@ def get_test_case(test_file):
 def get_collect_list(folder, tc_list):
     file_name_list = list()
     for test_case in tc_list:
-        case_folder = folder + '/' + test_case + "/out1/"
+        case_folder = test_case + "/out/"
+        if not os.path.exists(case_folder):
+            continue
         filenames = os.listdir(case_folder)
-        #print(filenames)
         f_names = [fn for fn in filenames if '.png' in fn or '.bmp' in fn]
-        #print(f_names)
         if len(f_names) == 0:
             continue
         f_names.sort(key=lambda x: int(re.findall(r'\d+', x)[0]))
         last_idx = re.findall(r'\d+', f_names[-1])[0]
-        #print(f_names)
         for f in f_names:
             if last_idx in f:
-                file_name_list.append(os.path.join(test_case, 'out1', f))
-                print(os.path.join(test_case, 'out1', f))
+                file_name_list.append(os.path.join(test_case, 'out', f))
+                print(os.path.join(test_case, 'out', f))
     return file_name_list
 
 

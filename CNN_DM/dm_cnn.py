@@ -140,11 +140,14 @@ if __name__ == "__main__":
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm.csv", label=1),
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_merged.csv", label=1),
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_SR_x3.csv", label=1),
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_SR_4k_0707.csv", label=1),
     ]
     not_dm_datasets = [
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm.csv", label=0),
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_merged.csv", label=0),
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_SR_x3.csv", label=0),
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_SR_x2_0707.csv", label=0),
+        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_SR_4k_0707.csv", label=0),
     ]
 
     dm_dataset = ConcatDataset(dm_datasets)
@@ -185,7 +188,7 @@ if __name__ == "__main__":
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    epochs = 40
+    epochs = 200
     best_f1 = 0.0
 
     for epoch in range(epochs):
