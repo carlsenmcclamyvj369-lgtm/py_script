@@ -57,7 +57,7 @@ def main():
     prenum = cfg.get('INPUT_PRENUM', 4)
     start = cfg.get('START_NO', 0)
     end = min(cfg.get('END_NO', 299) + 1, start + cfg.get('OFRAM_NUM', 300))
-
+    end = min(end, 200)
     # 加载模型
     predict_cnn.OUTPUT_DIR = pred_dir
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -95,7 +95,9 @@ def main():
     print(f"\nDone: {processed} processed, {skipped} skipped, {time.time()-t0:.0f}s")
     print(f"  out/  {out_dir}")
     print(f"  pred/ {pred_dir}")
-
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     main()

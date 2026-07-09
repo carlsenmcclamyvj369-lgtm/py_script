@@ -1,0 +1,336 @@
+  INPUT_DIR = C:\SW\data\MNR_TEST\MNR_Video2Image\MNR\05.02.25
+  OUTPUT_PATH = ./out/
+  REG_FILE = ./reg_file.txt
+  TAP_PATH = ./out/
+  INPUT_PREFIX = frame
+  INPUT_OSD_PREFIX = osdmask
+  INPUT_PRENUM = 4
+  OUTPUT_PREFIX = out
+  ROI_SCL_HRATE = 1
+  ROI_SCL_VRATE = 1
+  ROI_XSTART = 0
+  ROI_YSTART = 0
+  ROI_WIDTH = 1920
+  ROI_HEIGHT = 1080
+  INPUT_OSD_WIDTH = 1920
+  INPUT_OSD_HEIGHT = 1080
+  INPUT_WIDTH = 1920
+  INPUT_HEIGHT = 1080
+  INPUT_FORMAT = 0
+  OUTPUT_FORMAT = 0
+  START_NO = 0
+  OFRAM_NUM = 716
+  END_NO = 715
+  INPUT_N = 1
+  OUTPUT_M = 1
+  FILM_MODE = 0
+  SIM_FD_EN = 0
+  DEBUG_EN = 0
+  TAP_INTV = 0
+  LOAD_SIM = 0
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0000_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0000_out.bmp
+  [0] frame0000.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0001_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0001_out.bmp
+  [1] frame0001.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0002_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0002_out.bmp
+  [2] frame0002.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0003_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0003_out.bmp
+  [3] frame0003.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0004_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0004_out.bmp
+  [4] frame0004.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0005_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0005_out.bmp
+  [5] frame0005.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0006_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0006_out.bmp
+  [6] frame0006.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0007_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0007_out.bmp
+  [7] frame0007.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0008_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0008_out.bmp
+  [8] frame0008.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0009_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0009_out.bmp
+  [9] frame0009.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0010_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0010_out.bmp
+  [10] frame0010.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0011_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0011_out.bmp
+  [11] frame0011.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0012_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0012_out.bmp
+  [12] frame0012.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0013_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0013_out.bmp
+  [13] frame0013.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0014_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0014_out.bmp
+  [14] frame0014.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0015_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0015_out.bmp
+  [15] frame0015.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0016_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0016_out.bmp
+  [16] frame0016.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0017_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0017_out.bmp
+  [17] frame0017.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0018_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0018_out.bmp
+  [18] frame0018.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0019_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0019_out.bmp
+  [19] frame0019.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0020_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0020_out.bmp
+  [20] frame0020.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0021_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0021_out.bmp
+  [21] frame0021.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0022_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0022_out.bmp
+  [22] frame0022.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0023_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0023_out.bmp
+  [23] frame0023.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0024_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0024_out.bmp
+  [24] frame0024.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0025_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0025_out.bmp
+  [25] frame0025.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0026_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0026_out.bmp
+  [26] frame0026.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0027_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0027_out.bmp
+  [27] frame0027.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0028_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0028_out.bmp
+  [28] frame0028.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0029_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0029_out.bmp
+  [29] frame0029.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0030_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0030_out.bmp
+  [30] frame0030.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0031_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0031_out.bmp
+  [31] frame0031.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0032_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0032_out.bmp
+  [32] frame0032.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0033_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0033_out.bmp
+  [33] frame0033.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0034_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0034_out.bmp
+  [34] frame0034.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0035_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0035_out.bmp
+  [35] frame0035.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0036_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0036_out.bmp
+  [36] frame0036.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0037_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0037_out.bmp
+  [37] frame0037.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0038_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0038_out.bmp
+  [38] frame0038.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0039_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0039_out.bmp
+  [39] frame0039.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 5040/32400 (15.6%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0040_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0040_out.bmp
+  [40] frame0040.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [1s]
+  DM: 4966/32400 (15.3%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0041_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0041_out.bmp
+  [41] frame0041.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 4935/32400 (15.2%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0042_cnn.png
+  Denoised: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0042_out.bmp
+  [42] frame0042.bmp  1920x1080  cfg=1920x1080
+  Image: 1920x1080, grid: 240x135
+  Computing grid features... [0s]
+  Assembling neighborhoods & predicting... [0s]
+  DM: 4916/32400 (15.2%)
+  Saved: C:\code\py\denoise\scripts\CNN_DM\cfg_test_data\MNR\05.02.25\predictions\frame0043_cnn.png

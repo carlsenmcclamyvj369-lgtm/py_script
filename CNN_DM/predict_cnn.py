@@ -159,7 +159,7 @@ def compute_grid_features(y_full):
 
     return grid.cpu().numpy()
 
-
+@torch.no_grad()
 def predict_image(model, device, bmp_path, output_path, save_debug=True):
     """Run CNN on a BMP, save overlay."""
     bgr = cv2.imread(bmp_path, cv2.IMREAD_COLOR)

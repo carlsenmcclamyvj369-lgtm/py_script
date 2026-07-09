@@ -1,0 +1,37 @@
+INPUT_DIR = des/MNR/5.2.74.KPIX_YandRestless/
+OUTPUT_PATH = ./out/
+REG_FILE = ./reg_file.txt
+TAP_PATH = ./out/
+
+INPUT_PREFIX = frame
+INPUT_OSD_PREFIX = osdmask
+INPUT_PRENUM = 4
+OUTPUT_PREFIX = out
+
+ROI_SCL_HRATE = 1
+ROI_SCL_VRATE = 1
+ROI_XSTART = 0
+ROI_YSTART = 0
+ROI_WIDTH = 1920
+ROI_HEIGHT = 540
+INPUT_OSD_WIDTH = 1920
+INPUT_OSD_HEIGHT = 540
+
+INPUT_WIDTH = 1920
+INPUT_HEIGHT = 540
+
+INPUT_FORMAT = 0 # 0: rgb/bmp, 1: ycbcr444.yuv, 2: ycbcr422.yuv, 3: ycbcr444.dat
+OUTPUT_FORMAT = 0 # 0: rgb/bmp, 1: ycbcr444.yuv( in sequence), 2: ycbcr422.yuv( in sequence) 3:hex data
+
+START_NO = 0
+OFRAM_NUM = 414
+END_NO = 413
+
+#### added for phase table
+INPUT_N = 1
+OUTPUT_M = 1
+FILM_MODE = 0 #:0: video, 1: 22, 2:32, 3:3223 ///
+SIM_FD_EN = 0
+DEBUG_EN = 0
+TAP_INTV = 0
+LOAD_SIM = 0
