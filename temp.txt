@@ -1,0 +1,42 @@
+# ====================== MNR 目录（从上至下顺序） ======================
+python run_cfg_test.py ./MNR/001_OnlineNews
+python run_cfg_test.py ./MNR/002_VideoResolution_1
+python run_cfg_test.py ./MNR/002_VideoResolution_2
+python run_cfg_test.py ./MNR/03
+python run_cfg_test.py ./MNR/004_pal_un_ds_hvdefinition
+python run_cfg_test.py ./MNR/05.02.24
+python run_cfg_test.py ./MNR/05.02.25
+python run_cfg_test.py ./MNR/5.2.74.KPIX_YandRestless
+python run_cfg_test.py ./MNR/05.02.84
+python run_cfg_test.py ./MNR/00038
+python run_cfg_test.py ./MNR/00046
+python run_cfg_test.py ./MNR/DI_049-OnlineNews
+python run_cfg_test.py ./MNR/jiuzhou_muyunji
+python run_cfg_test.py ./MNR/lec_480i_mpeg_mosquito
+python run_cfg_test.py ./MNR/MNR_001-Mosquito
+python run_cfg_test.py ./MNR/MNR_002-Mosquito
+python run_cfg_test.py ./MNR/MNR_015-ch06_Input
+python run_cfg_test.py ./MNR/park_576i_mpeg_mosquito
+python run_cfg_test.py ./MNR/usa_576i_denoise
+
+# ====================== MNR_MIS 子目录（截图从上到下严格顺序） ======================
+python run_cfg_test.py ./MNR/MNR_MIS/00008
+python run_cfg_test.py ./MNR/MNR_MIS/00009
+python run_cfg_test.py ./MNR/MNR_MIS/00032
+python run_cfg_test.py ./MNR/MNR_MIS/00553
+python run_cfg_test.py ./MNR/MNR_MIS/branch_010_scenery
+python run_cfg_test.py ./MNR/MNR_MIS/branch_11001_panasonic_detail
+python run_cfg_test.py ./MNR/MNR_MIS/branch_12009_sony_testcard_4k
+python run_cfg_test.py ./MNR/MNR/MNR_MIS/branch_12050_tree_scenery
+python run_cfg_test.py ./MNR/MNR_MIS/branch_13001_swiss_4k
+python run_cfg_test.py ./MNR/MNR_MIS/hisense_mnr_mis_clarity_input_1
+python run_cfg_test.py ./MNR/MNR_MIS/hisense_mnr_mis_clarity_input_2
+python run_cfg_test.py ./MNR/MNR/MNR_MIS/hisense_mnr_mis_clarity_input_3
+python run_cfg_test.py ./MNR/MNR_MIS/hisense_mnr_mis_clarity_input_4
+python run_cfg_test.py ./MNR/MNR_MIS/hisense_mnr_mis_clarity_input_5
+python run_cfg_test.py ./MNR/MNR_MIS/Input_1080p_image_003
+python run_cfg_test.py ./MNR/MNR/MNR_MIS/Input_1080p_image_004
+python run_cfg_test.py ./MNR/MNR_MIS/Input_1080p_image_007
+python run_cfg_test.py ./MNR/MNR_MIS/Input_1080p_image_009
+python run_cfg_test.py ./MNR/MNR_MIS/sharpness_2016
+python run_cfg_test.py ./MNR/MNR_MIS/The_World_Heritage_Kyoto

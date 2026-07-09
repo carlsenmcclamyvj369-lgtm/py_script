@@ -19,12 +19,12 @@ import feature_compute_reference as fcr
 SCRIPT_DIR = os.path.dirname(__file__)
 # MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
 MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
-# TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
+TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
+# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
 
 GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
@@ -116,7 +116,9 @@ def compute_grid_features(y_full):
                    torch.zeros(v.shape[:-1], device=device), \
                    torch.zeros(v.shape[:-1], device=device), \
                    torch.zeros(v.shape[:-1], device=device)
-        d2 = torch.diff(v, n=2, dim=-1)
+        d1_for_d2 = torch.diff(v, dim=-1)
+        d2 = torch.diff(d1_for_d2, dim=-1)
+
         dyn = v.amax(dim=-1) - v.amin(dim=-1)
         d2_en = d2.abs().mean(dim=-1)
         # sign changes

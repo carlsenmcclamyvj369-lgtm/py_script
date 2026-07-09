@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
-from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 
 # =========================
 # 1. 只使用这16个特征
@@ -231,11 +230,16 @@ if __name__ == "__main__":
         all_labels = np.concatenate(all_labels).flatten()
         pred_binary = (all_preds > 0.5).astype(np.int64)
 
-        acc = accuracy_score(all_labels, pred_binary)
-        prec = precision_score(all_labels, pred_binary, zero_division=0)
-        rec = recall_score(all_labels, pred_binary, zero_division=0)
-        f1 = f1_score(all_labels, pred_binary, zero_division=0)
-        cm = confusion_matrix(all_labels, pred_binary)
+        tp = np.sum((pred_binary == 1) & (all_labels == 1))
+        tn = np.sum((pred_binary == 0) & (all_labels == 0))
+        fp = np.sum((pred_binary == 1) & (all_labels == 0))
+        fn = np.sum((pred_binary == 0) & (all_labels == 1))
+
+        acc = (tp + tn) / (tp + tn + fp + fn + 1e-10)
+        prec = tp / (tp + fp + 1e-10)
+        rec = tp / (tp + fn + 1e-10)
+        f1 = 2 * prec * rec / (prec + rec + 1e-10)
+        cm = np.array([[tn, fp], [fn, tp]])
 
         print(f"Epoch [{epoch+1}/{epochs}]  Loss: {avg_loss:.6f}  "
               f"Val Acc: {acc:.4f}  Prec: {prec:.4f}  Rec: {rec:.4f}  F1: {f1:.4f}")
