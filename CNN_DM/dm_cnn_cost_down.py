@@ -119,9 +119,9 @@ class MosquitoDenoiseCNN(nn.Module):
         self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
 
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu((self.conv1(x)))
+        x = F.relu((self.conv2(x)))
+        x = F.relu((self.conv3(x)))
         x = self.conv4(x)
         x = x.view(x.size(0), -1)
         x= torch.clip(torch.relu(x), 0,1)
