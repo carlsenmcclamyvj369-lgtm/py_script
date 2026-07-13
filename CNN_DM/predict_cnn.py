@@ -22,8 +22,8 @@ suffix = "_cost_down" if COST_DOWN else ""
 MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn{suffix}.pth")
 # MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
 # TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
-# TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
-TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
+# TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data", "dot25")
+TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data")
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}")
@@ -278,6 +278,8 @@ def main():
     model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device), strict=False)
     model.eval()
+    if COST_DOWN:
+        model.use_hard_sigmoid = True
     print(f"Model loaded from {MODEL_PATH} (cost_down={COST_DOWN})")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)

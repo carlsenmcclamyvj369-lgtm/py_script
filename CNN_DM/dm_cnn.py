@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
+import os
 
 # =========================
 # 1. 只使用这16个特征
@@ -106,16 +107,18 @@ class MosquitoDenoiseCNN(nn.Module):
     def __init__(self, cost_down=False):
         super(MosquitoDenoiseCNN, self).__init__()
         self.cost_down = cost_down
-        self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=0)
-        self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=0)
-        self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
+        self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=1)
         if not cost_down:
             self.bn1 = nn.BatchNorm2d(32)
             self.bn2 = nn.BatchNorm2d(64)
             self.bn3 = nn.BatchNorm2d(16)
         else:
             self._init_weights()
+        # Phase 2 fine-tune 时由训练代码设为 True
+        self.use_hard_sigmoid = False
 
     def _init_weights(self):
         for m in self.modules():
@@ -130,7 +133,9 @@ class MosquitoDenoiseCNN(nn.Module):
             x = F.relu(self.conv3(x))
             x = self.conv4(x)
             x = x.view(x.size(0), -1)
-            # x = torch.clip(torch.relu(x), 1e-7, 1 - 1e-7)
+            # if self.use_hard_sigmoid:
+            #     x = torch.clamp(x / 6 + 0.5, 0, 1)   # Hard Sigmoid
+            # else: raw logits (BCEWithLogitsLoss 需要)
             x = torch.clip(torch.relu(x), 0, 1)
         else:
             x = F.relu(self.bn1(self.conv1(x)))
@@ -147,21 +152,22 @@ class MosquitoDenoiseCNN(nn.Module):
 if __name__ == "__main__":
     # --- 开关：True=无BN+ReLU+Clip, False=BN+Sigmoid ---
     COST_DOWN = True
+    DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
     dm_datasets = [
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm.csv", label=1),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_merged.csv", label=1),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_SR_x3.csv", label=1),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_SR_4k_0707.csv", label=1),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_seq_0710.csv", label=1),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm.csv"), label=1),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_merged.csv"), label=1),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_x3.csv"), label=1),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_4k_0707.csv"), label=1),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_seq_0710.csv"), label=1),
     ]
     not_dm_datasets = [
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm.csv", label=0),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_merged.csv", label=0),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_SR_x3.csv", label=0),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_SR_x2_0707.csv", label=0),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_SR_4k_0707.csv", label=0),
-        MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_not_dm_seq_0710.csv", label=0),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm.csv"), label=0),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_merged.csv"), label=0),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x3.csv"), label=0),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x2_0707.csv"), label=0),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_4k_0707.csv"), label=0),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_seq_0710.csv"), label=0),
     ]
 
     dm_dataset = ConcatDataset(dm_datasets)
@@ -214,9 +220,22 @@ if __name__ == "__main__":
     criterion = nn.BCEWithLogitsLoss()
 
     epochs = 200
+    phase2_start = 150
     best_f1 = 0.0
 
     for epoch in range(epochs):
+        # ─── Phase 1→2 切换 ───
+        if COST_DOWN and epoch == phase2_start:
+            print(f"\n{'='*60}")
+            print(f"Phase 2: switching to Hard Sigmoid + BCELoss, LR→1e-6")
+            print(f"{'='*60}")
+            model.use_hard_sigmoid = True
+            criterion = nn.BCELoss()
+            for g in optimizer.param_groups:
+                g['lr'] = 1e-6
+                g['weight_decay'] = 0.0
+            max_grad_norm = None
+            label_smoothing = 0.0
         # ─── Train ───
         model.train()
         total_loss = 0.0
@@ -253,6 +272,9 @@ if __name__ == "__main__":
                 x = x.to(device)
                 y = y.to(device)
                 pred = model(x)
+                # Phase 1 (logits) → sigmoid 转概率；Phase 2 (Hard Sigmoid) 已在 [0,1]
+                if not model.use_hard_sigmoid and COST_DOWN:
+                    pred = torch.sigmoid(pred)
                 all_preds.append(pred.cpu().numpy())
                 all_labels.append(y.cpu().numpy())
 
