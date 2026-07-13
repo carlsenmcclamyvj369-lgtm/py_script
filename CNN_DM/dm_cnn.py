@@ -73,28 +73,20 @@ class MosquitoPatchDataset(Dataset):
         }
         df = df.rename(columns=rename_map)
         missing = [c for c in features_list if c not in df.columns]
-        # pr
         if len(missing) > 0:
             raise ValueError(f"Missing feature columns: {missing}")
         self.patch_size = patch_size
         self.patch_area = patch_size * patch_size
-        # 只取16个feature，并归一化到[0,1]
         x = normalize_features(df, features_list)
-        # 要求每81行组成一个patch
         num_rows = x.shape[0]
         num_patches = num_rows // self.patch_area
         if num_patches == 0:
             raise ValueError(
                 f"CSV rows={num_rows}, not enough for one {patch_size}x{patch_size} patch"
             )
-        # 丢掉不能整除的尾部
         x = x[:num_patches * self.patch_area]
-        # shape: (N, 81, 16)
         x = x.reshape(num_patches, self.patch_area, len(features_list))
-        # shape: (N, 9, 9, 16)
         x = x.reshape(num_patches, patch_size, patch_size, len(features_list))
-        # PyTorch Conv2d 需要 channel-first:
-        # (N, 9, 9, 16) -> (N, 16, 9, 9)
         x = np.transpose(x, (0, 3, 1, 2))
         self.x = torch.tensor(x, dtype=torch.float32)
         self.y = torch.full((num_patches, 1), float(label), dtype=torch.float32)
@@ -108,33 +100,45 @@ class MosquitoPatchDataset(Dataset):
 
 # =========================
 # 4. 4层 CNN Model
-#    padding 全部为 0
+#    用 cost_down=True 去掉 BN + sigmoid → ReLU+Clip
 # =========================
 class MosquitoDenoiseCNN(nn.Module):
-    def __init__(self):
+    def __init__(self, cost_down=False):
         super(MosquitoDenoiseCNN, self).__init__()
+        self.cost_down = cost_down
         self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
-        self.bn1 = nn.BatchNorm2d(32)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=0)
-        self.bn2 = nn.BatchNorm2d(64)
         self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=0)
-        self.bn3 = nn.BatchNorm2d(16)
         self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
+        if not cost_down:
+            self.bn1 = nn.BatchNorm2d(32)
+            self.bn2 = nn.BatchNorm2d(64)
+            self.bn3 = nn.BatchNorm2d(16)
 
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = self.conv4(x)
-        x = x.view(x.size(0), -1)
-        x = torch.sigmoid(x)
+        if self.cost_down:
+            x = F.relu(self.conv1(x))
+            x = F.relu(self.conv2(x))
+            x = F.relu(self.conv3(x))
+            x = self.conv4(x)
+            x = x.view(x.size(0), -1)
+            x = torch.clip(torch.relu(x), 0, 1)
+        else:
+            x = F.relu(self.bn1(self.conv1(x)))
+            x = F.relu(self.bn2(self.conv2(x)))
+            x = F.relu(self.bn3(self.conv3(x)))
+            x = self.conv4(x)
+            x = x.view(x.size(0), -1)
+            x = torch.sigmoid(x)
         return x
 
 # =========================
 # 5. 以下训练代码仅在直接运行时执行
 # =========================
 if __name__ == "__main__":
-    # DM datasets
+    # --- 开关：True=无BN+ReLU+Clip, False=BN+Sigmoid ---
+    COST_DOWN = True
+
     dm_datasets = [
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm.csv", label=1),
         MosquitoPatchDataset("C:\code\py\denoise\scripts\CNN_DM\9x9_dm_merged.csv", label=1),
@@ -154,7 +158,6 @@ if __name__ == "__main__":
     dm_dataset = ConcatDataset(dm_datasets)
     not_dm_dataset = ConcatDataset(not_dm_datasets)
 
-    # 按 8:2 分层切分训练/验证集
     val_ratio = 0.2
     dm_size = len(dm_dataset)
     not_dm_size = len(not_dm_dataset)
@@ -185,7 +188,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    model = MosquitoDenoiseCNN().to(device)
+    model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
@@ -249,8 +252,8 @@ if __name__ == "__main__":
         print(f"    TN={cm[0,0]:>5d}  FP={cm[0,1]:>5d}")
         print(f"    FN={cm[1,0]:>5d}  TP={cm[1,1]:>5d}")
 
-        # 按验证集 F1 保存最佳模型
         if f1 > best_f1:
             best_f1 = f1
-            torch.save(model.state_dict(), "mosquito_denoise_cnn.pth")
+            suffix = "_cost_down" if COST_DOWN else ""
+            torch.save(model.state_dict(), f"mosquito_denoise_cnn{suffix}.pth")
             print(f"  >>> Model saved (F1 improved to {f1:.4f})")

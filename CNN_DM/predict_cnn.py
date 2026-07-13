@@ -16,8 +16,10 @@ from dm_cnn import MosquitoDenoiseCNN, features_list, NORM_DIV
 import feature_compute_reference as fcr
 
 # ─── Config ───
+COST_DOWN = False          # 与训练时的 cost_down 一致
 SCRIPT_DIR = os.path.dirname(__file__)
-MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
+suffix = "_cost_down" if COST_DOWN else ""
+MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn{suffix}.pth")
 # MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
 TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
@@ -159,6 +161,7 @@ def compute_grid_features(y_full):
 
     return grid.cpu().numpy()
 
+
 @torch.no_grad()
 def predict_image(model, device, bmp_path, output_path, save_debug=True):
     """Run CNN on a BMP, save overlay."""
@@ -187,14 +190,7 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     from numpy.lib.stride_tricks import sliding_window_view
     grid_pad = np.pad(grid, ((4, 4), (4, 4), (0, 0)), mode='edge')
     grid_norm = np.clip(grid_pad / div_arr, 0, 1)
-    # windows = sliding_window_view(grid_norm, (9, 9), axis=(0, 1))
-    # windows shape: (gh, gw, n_feat, 9, 9) → (gh, gw, 9, 9, n_feat)
-    # windows = windows.transpose(0, 1, 3, 4, 2)
-    X = np.ascontiguousarray(grid_norm).reshape( 1, (8+gh) , (8+gw), 16).transpose(0, 3, 1, 2)
-    # print("grid shape: ", grid.shape)
-    # print("grid_pad shape: ", grid_pad.shape)
-    # print("windows shape: ", windows.shape)
-    # print("X shape: ", X.shape)
+    X = np.ascontiguousarray(grid_norm).reshape(1, (8+gh), (8+gw), 16).transpose(0, 3, 1, 2)
 
     pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
     if len(X) > 0:
@@ -259,11 +255,11 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
 
     if save_debug == True:
         cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_in.bmp"), bgr)
-        # cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_bilater.bmp"), filtered_img)
         cv2.imwrite(os.path.join(OUTPUT_DIR, stem + "_pred8x8.bmp"), (pred_map_3c * 255).astype(np.uint8))
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
     cv2.imwrite(str(output_path), out_img)
     print(f"  Denoised: {output_path}")
+
 
 def main():
     global FEATURE_IDX
@@ -272,10 +268,10 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    model = MosquitoDenoiseCNN().to(device)
+    model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device), strict=False)
     model.eval()
-    print(f"Model loaded from {MODEL_PATH}")
+    print(f"Model loaded from {MODEL_PATH} (cost_down={COST_DOWN})")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     bmps = sorted([f for f in os.listdir(TEST_DIR) if f.endswith('.bmp')])
