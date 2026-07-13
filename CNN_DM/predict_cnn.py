@@ -17,8 +17,8 @@ import feature_compute_reference as fcr
 
 # ─── Config ───
 SCRIPT_DIR = os.path.dirname(__file__)
-# MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
-MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
+MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn.pth")
+# MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
 TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"

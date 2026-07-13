@@ -1,4 +1,4 @@
-INPUT_DIR = des/MNR/DI_049-OnlineNews/
+INPUT_DIR = C:\SW\data\MNR_TEST\MNR_Video2Image\MNR\DI_049-OnlineNews
 OUTPUT_PATH = ./out/
 REG_FILE = ./reg_file.txt
 TAP_PATH = ./out/

@@ -1,4 +1,4 @@
-INPUT_DIR = des/MNR/5.2.74.KPIX_YandRestless/
+INPUT_DIR = C:\SW\data\MNR_TEST\MNR_Video2Image\MNR\5.2.74.KPIX_YandRestless
 OUTPUT_PATH = ./out/
 REG_FILE = ./reg_file.txt
 TAP_PATH = ./out/

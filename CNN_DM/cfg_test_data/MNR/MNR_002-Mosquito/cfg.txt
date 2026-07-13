@@ -1,4 +1,4 @@
-INPUT_DIR = des/MNR/MNR_002-Mosquito/
+INPUT_DIR = C:\SW\data\MNR_TEST\MNR_Video2Image\MNR\MNR_002-Mosquito
 OUTPUT_PATH = ./out/
 REG_FILE = ./reg_file.txt
 TAP_PATH = ./out/
