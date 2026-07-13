@@ -114,6 +114,14 @@ class MosquitoDenoiseCNN(nn.Module):
             self.bn1 = nn.BatchNorm2d(32)
             self.bn2 = nn.BatchNorm2d(64)
             self.bn3 = nn.BatchNorm2d(16)
+        else:
+            self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.zeros_(m.bias)
 
     def forward(self, x):
         if self.cost_down:
@@ -122,6 +130,7 @@ class MosquitoDenoiseCNN(nn.Module):
             x = F.relu(self.conv3(x))
             x = self.conv4(x)
             x = x.view(x.size(0), -1)
+            # x = torch.clip(torch.relu(x), 1e-7, 1 - 1e-7)
             x = torch.clip(torch.relu(x), 0, 1)
         else:
             x = F.relu(self.bn1(self.conv1(x)))
@@ -189,8 +198,20 @@ if __name__ == "__main__":
     print(f"Device: {device}")
 
     model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
-    criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    if COST_DOWN:
+        optimizer = torch.optim.Adam(model.parameters(), lr=3e-4, weight_decay=1e-4)
+        max_grad_norm = 1.0
+        label_smoothing = 0.05
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-5
+        )
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        max_grad_norm = None
+        label_smoothing = 0.0
+        scheduler = None
+    criterion = nn.BCEWithLogitsLoss()
 
     epochs = 200
     best_f1 = 0.0
@@ -206,10 +227,14 @@ if __name__ == "__main__":
             y = y.to(device)
 
             pred = model(x)
+            if label_smoothing > 0:
+                y = y * (1 - label_smoothing) + label_smoothing / 2
             loss = criterion(pred, y)
 
             optimizer.zero_grad()
             loss.backward()
+            if max_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             optimizer.step()
 
             batch_size = x.size(0)
@@ -233,27 +258,46 @@ if __name__ == "__main__":
 
         all_preds = np.concatenate(all_preds).flatten()
         all_labels = np.concatenate(all_labels).flatten()
-        pred_binary = (all_preds > 0.5).astype(np.int64)
 
-        tp = np.sum((pred_binary == 1) & (all_labels == 1))
-        tn = np.sum((pred_binary == 0) & (all_labels == 0))
-        fp = np.sum((pred_binary == 1) & (all_labels == 0))
-        fn = np.sum((pred_binary == 0) & (all_labels == 1))
+        # 扫阈值找最佳 F1
+        if COST_DOWN:
+            thresholds = np.arange(0.30, 0.75, 0.05)
+        else:
+            thresholds = [0.5]
+        best_th = 0.5
+        best_f1_epoch = 0.0
+        best_cm = np.zeros((2, 2), dtype=np.int64)
+        for th in thresholds:
+            pb = (all_preds > th).astype(np.int64)
+            tp = np.sum((pb == 1) & (all_labels == 1))
+            tn = np.sum((pb == 0) & (all_labels == 0))
+            fp = np.sum((pb == 1) & (all_labels == 0))
+            fn = np.sum((pb == 0) & (all_labels == 1))
+            prec = tp / (tp + fp + 1e-10)
+            rec = tp / (tp + fn + 1e-10)
+            f1_th = 2 * prec * rec / (prec + rec + 1e-10)
+            if f1_th > best_f1_epoch:
+                best_f1_epoch = f1_th
+                best_th = th
+                best_cm = np.array([[tn, fp], [fn, tp]])
 
-        acc = (tp + tn) / (tp + tn + fp + fn + 1e-10)
-        prec = tp / (tp + fp + 1e-10)
-        rec = tp / (tp + fn + 1e-10)
-        f1 = 2 * prec * rec / (prec + rec + 1e-10)
-        cm = np.array([[tn, fp], [fn, tp]])
+        acc = (best_cm[0,0] + best_cm[1,1]) / best_cm.sum()
+        prec = best_cm[1,1] / (best_cm[1,1] + best_cm[0,1] + 1e-10)
+        rec = best_cm[1,1] / (best_cm[1,1] + best_cm[1,0] + 1e-10)
 
         print(f"Epoch [{epoch+1}/{epochs}]  Loss: {avg_loss:.6f}  "
-              f"Val Acc: {acc:.4f}  Prec: {prec:.4f}  Rec: {rec:.4f}  F1: {f1:.4f}")
+              f"Val Acc: {acc:.4f}  Prec: {prec:.4f}  Rec: {rec:.4f}  F1: {best_f1_epoch:.4f}  "
+              f"th={best_th:.2f}")
         print(f"  Confusion Matrix:")
-        print(f"    TN={cm[0,0]:>5d}  FP={cm[0,1]:>5d}")
-        print(f"    FN={cm[1,0]:>5d}  TP={cm[1,1]:>5d}")
+        print(f"    TN={best_cm[0,0]:>5d}  FP={best_cm[0,1]:>5d}")
+        print(f"    FN={best_cm[1,0]:>5d}  TP={best_cm[1,1]:>5d}")
 
-        if f1 > best_f1:
-            best_f1 = f1
+        if best_f1_epoch > best_f1:
+            best_f1 = best_f1_epoch
             suffix = "_cost_down" if COST_DOWN else ""
             torch.save(model.state_dict(), f"mosquito_denoise_cnn{suffix}.pth")
-            print(f"  >>> Model saved (F1 improved to {f1:.4f})")
+            np.save(f"best_th{suffix}.npy", np.array(best_th))
+            print(f"  >>> Model saved (F1 improved to {best_f1_epoch:.4f} @ th={best_th:.2f})")
+
+        if scheduler is not None:
+            scheduler.step(best_f1_epoch)

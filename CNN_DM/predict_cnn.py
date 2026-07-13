@@ -16,17 +16,24 @@ from dm_cnn import MosquitoDenoiseCNN, features_list, NORM_DIV
 import feature_compute_reference as fcr
 
 # ─── Config ───
-COST_DOWN = False          # 与训练时的 cost_down 一致
+COST_DOWN = True          # 与训练时的 cost_down 一致
 SCRIPT_DIR = os.path.dirname(__file__)
 suffix = "_cost_down" if COST_DOWN else ""
 MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn{suffix}.pth")
 # MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
-TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
+# TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data\dot25"
+TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions_gen")
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, "predictions")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}")
+
+# 训练时保存的最佳阈值（不存在则用 0.5）
+TH_PATH = os.path.join(SCRIPT_DIR, f"best_th{suffix}.npy")
+if os.path.exists(TH_PATH):
+    DM_TH = float(np.load(TH_PATH))
+else:
+    DM_TH = 0.5
 
 GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
@@ -201,7 +208,7 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
 
     print(f"[{time.time()-t0:.0f}s]")
 
-    dm_count = int(np.nansum(pred_map > 0.5))
+    dm_count = int(np.nansum(pred_map > DM_TH))
     valid_count = int(np.sum(~np.isnan(pred_map)))
     print(f"  DM: {dm_count}/{valid_count} ({100*dm_count/max(valid_count,1):.1f}%)")
 
@@ -211,7 +218,7 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     for bi in range(gh):
         for bj in range(gw):
             p = pred_map[bi, bj]
-            if np.isnan(p) or p <= 0.5:
+            if np.isnan(p) or p <= DM_TH:
                 continue
             y1, y2 = bi*GS, min(bi*GS+GS, H)
             x1, x2 = bj*GS, min(bj*GS+GS, W)
