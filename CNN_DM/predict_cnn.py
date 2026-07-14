@@ -25,8 +25,10 @@ MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn{suffix}.pth")
 # TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data", "dot25")
 TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data")
 # TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}_CH32")
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH32")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH32")
 
 # 训练时保存的最佳阈值（不存在则用 0.5）
 TH_PATH = os.path.join(SCRIPT_DIR, f"best_th{suffix}.npy")

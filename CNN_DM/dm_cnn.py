@@ -107,18 +107,20 @@ class MosquitoDenoiseCNN(nn.Module):
     def __init__(self, cost_down=False):
         super(MosquitoDenoiseCNN, self).__init__()
         self.cost_down = cost_down
-        self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=1)
-        if not cost_down:
+        if cost_down:
+            self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
+            self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
+            self.conv3 = nn.Conv2d(16, 8, kernel_size=3, padding=0)
+            self.conv4 = nn.Conv2d(8, 1, kernel_size=3, padding=0)
+            self._init_weights()
+        else:
+            self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
+            self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=0)
+            self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=0)
+            self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
             self.bn1 = nn.BatchNorm2d(32)
             self.bn2 = nn.BatchNorm2d(64)
             self.bn3 = nn.BatchNorm2d(16)
-        else:
-            self._init_weights()
-        # Phase 2 fine-tune 时由训练代码设为 True
-        self.use_hard_sigmoid = False
 
     def _init_weights(self):
         for m in self.modules():
@@ -217,25 +219,12 @@ if __name__ == "__main__":
         max_grad_norm = None
         label_smoothing = 0.0
         scheduler = None
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCELoss()
 
     epochs = 200
-    phase2_start = 150
     best_f1 = 0.0
 
     for epoch in range(epochs):
-        # ─── Phase 1→2 切换 ───
-        if COST_DOWN and epoch == phase2_start:
-            print(f"\n{'='*60}")
-            print(f"Phase 2: switching to Hard Sigmoid + BCELoss, LR→1e-6")
-            print(f"{'='*60}")
-            model.use_hard_sigmoid = True
-            criterion = nn.BCELoss()
-            for g in optimizer.param_groups:
-                g['lr'] = 1e-6
-                g['weight_decay'] = 0.0
-            max_grad_norm = None
-            label_smoothing = 0.0
         # ─── Train ───
         model.train()
         total_loss = 0.0
@@ -272,9 +261,6 @@ if __name__ == "__main__":
                 x = x.to(device)
                 y = y.to(device)
                 pred = model(x)
-                # Phase 1 (logits) → sigmoid 转概率；Phase 2 (Hard Sigmoid) 已在 [0,1]
-                if not model.use_hard_sigmoid and COST_DOWN:
-                    pred = torch.sigmoid(pred)
                 all_preds.append(pred.cpu().numpy())
                 all_labels.append(y.cpu().numpy())
 
