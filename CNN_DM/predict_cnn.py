@@ -19,7 +19,12 @@ import feature_compute_reference as fcr
 COST_DOWN = True          # 与训练时的 cost_down 一致
 SCRIPT_DIR = os.path.dirname(__file__)
 suffix = "_cost_down" if COST_DOWN else ""
-MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn{suffix}.pth")
+# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn{suffix}.pth")
+# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_CH3216161_0715.pth")
+# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
+# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
+MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig_0715_20_23.pth")
+MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_8_sig.pth")
 # MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
 # TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data", "dot25")
@@ -28,7 +33,7 @@ TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data")
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}_CH32")
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}")
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH32")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH32")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH3216168_sig")
 
 # 训练时保存的最佳阈值（不存在则用 0.5）
 TH_PATH = os.path.join(SCRIPT_DIR, f"best_th{suffix}.npy")

@@ -138,7 +138,9 @@ class MosquitoDenoiseCNN(nn.Module):
             # if self.use_hard_sigmoid:
             #     x = torch.clamp(x / 6 + 0.5, 0, 1)   # Hard Sigmoid
             # else: raw logits (BCEWithLogitsLoss 需要)
-            x = torch.clip(torch.relu(x), 0, 1)
+            # x = torch.clip(torch.relu(x), 0, 1)
+            x = torch.sigmoid(x)
+
         else:
             x = F.relu(self.bn1(self.conv1(x)))
             x = F.relu(self.bn2(self.conv2(x)))
@@ -162,6 +164,7 @@ if __name__ == "__main__":
         MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_x3.csv"), label=1),
         MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_4k_0707.csv"), label=1),
         MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_seq_0710.csv"), label=1),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_test_data_append_0715.csv"), label=1),
     ]
     not_dm_datasets = [
         MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm.csv"), label=0),
@@ -170,6 +173,7 @@ if __name__ == "__main__":
         MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x2_0707.csv"), label=0),
         MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_4k_0707.csv"), label=0),
         MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_seq_0710.csv"), label=0),
+        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_test_data_append_0715.csv"), label=0),
     ]
 
     dm_dataset = ConcatDataset(dm_datasets)
@@ -208,7 +212,7 @@ if __name__ == "__main__":
     model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
 
     if COST_DOWN:
-        optimizer = torch.optim.Adam(model.parameters(), lr=3e-4, weight_decay=1e-4)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
         max_grad_norm = 1.0
         label_smoothing = 0.05
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -221,7 +225,7 @@ if __name__ == "__main__":
         scheduler = None
     criterion = nn.BCELoss()
 
-    epochs = 200
+    epochs = 400
     best_f1 = 0.0
 
     for epoch in range(epochs):
@@ -269,7 +273,9 @@ if __name__ == "__main__":
 
         # 扫阈值找最佳 F1
         if COST_DOWN:
-            thresholds = np.arange(0.30, 0.75, 0.05)
+            # thresholds = np.arange(0.30, 0.75, 0.05)
+            thresholds = [0.5]
+
         else:
             thresholds = [0.5]
         best_th = 0.5
@@ -303,7 +309,7 @@ if __name__ == "__main__":
         if best_f1_epoch > best_f1:
             best_f1 = best_f1_epoch
             suffix = "_cost_down" if COST_DOWN else ""
-            torch.save(model.state_dict(), f"mosquito_denoise_cnn{suffix}.pth")
+            torch.save(model.state_dict(), f"mosquito_denoise_cnn{suffix}_32_16_8_sig.pth")
             np.save(f"best_th{suffix}.npy", np.array(best_th))
             print(f"  >>> Model saved (F1 improved to {best_f1_epoch:.4f} @ th={best_th:.2f})")
 
