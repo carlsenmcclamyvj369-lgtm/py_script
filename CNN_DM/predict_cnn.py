@@ -23,8 +23,8 @@ suffix = "_cost_down" if COST_DOWN else ""
 # MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_CH3216161_0715.pth")
 # MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
 # MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
-MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig_0715_20_23.pth")
-MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_8_sig.pth")
+MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
+# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_8_sig.pth")
 # MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
 # TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
 # TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data", "dot25")
@@ -33,7 +33,8 @@ TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data")
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}_CH32")
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}")
 # OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH32")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH3216168_sig")
+# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH3216168_sig")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH321616_sig")
 
 # 训练时保存的最佳阈值（不存在则用 0.5）
 TH_PATH = os.path.join(SCRIPT_DIR, f"best_th{suffix}.npy")
@@ -285,8 +286,19 @@ def main():
     model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device), strict=False)
     model.eval()
+
     if COST_DOWN:
-        model.use_hard_sigmoid = True
+        # 替换 sigmoid → Hard Sigmoid 降低推理计算量
+        conv_w = [model.conv1, model.conv2, model.conv3, model.conv4]
+        def _hard_sigmoid_forward(x):
+            for c in conv_w[:3]:
+                x = torch.relu(c(x))
+            x = conv_w[3](x)
+            x = x.view(x.size(0), -1)
+            x = torch.clamp(x / 6 + 0.5, 0, 1)
+            return x
+        model.forward = _hard_sigmoid_forward
+
     print(f"Model loaded from {MODEL_PATH} (cost_down={COST_DOWN})")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)

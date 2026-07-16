@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 import os
+import random
 
 # =========================
 # 1. 只使用这16个特征
@@ -108,10 +109,16 @@ class MosquitoDenoiseCNN(nn.Module):
         super(MosquitoDenoiseCNN, self).__init__()
         self.cost_down = cost_down
         if cost_down:
+            # self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
+            # self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
+            # self.conv3 = nn.Conv2d(16, 8, kernel_size=3, padding=0)
+            # self.conv4 = nn.Conv2d(8, 1, kernel_size=3, padding=0)
+            # self._init_weights()
+            #
             self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
             self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
-            self.conv3 = nn.Conv2d(16, 8, kernel_size=3, padding=0)
-            self.conv4 = nn.Conv2d(8, 1, kernel_size=3, padding=0)
+            self.conv3 = nn.Conv2d(16, 16, kernel_size=3, padding=0)
+            self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
             self._init_weights()
         else:
             self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
@@ -156,6 +163,13 @@ class MosquitoDenoiseCNN(nn.Module):
 if __name__ == "__main__":
     # --- 开关：True=无BN+ReLU+Clip, False=BN+Sigmoid ---
     COST_DOWN = True
+    SEED = 42
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
     dm_datasets = [
