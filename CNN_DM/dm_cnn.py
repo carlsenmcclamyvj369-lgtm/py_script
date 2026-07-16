@@ -323,7 +323,9 @@ if __name__ == "__main__":
         if best_f1_epoch > best_f1:
             best_f1 = best_f1_epoch
             suffix = "_cost_down" if COST_DOWN else ""
-            torch.save(model.state_dict(), f"mosquito_denoise_cnn{suffix}_32_16_8_sig.pth")
+            model_dir = os.path.join(DATA_DIR, "model")
+            os.makedirs(model_dir, exist_ok=True)
+            torch.save(model.state_dict(), os.path.join(model_dir, f"mosquito_denoise_cnn{suffix}.pth"))
             np.save(f"best_th{suffix}.npy", np.array(best_th))
             print(f"  >>> Model saved (F1 improved to {best_f1_epoch:.4f} @ th={best_th:.2f})")
 

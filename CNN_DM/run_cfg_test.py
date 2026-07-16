@@ -57,7 +57,6 @@ def main():
     prenum = cfg.get('INPUT_PRENUM', 4)
     start = cfg.get('START_NO', 0)
     end = min(cfg.get('END_NO', 299) + 1, start + cfg.get('OFRAM_NUM', 300))
-    end = min(end, 200)
     # 加载模型
     predict_cnn.OUTPUT_DIR = pred_dir
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
