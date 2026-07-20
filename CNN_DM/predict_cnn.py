@@ -16,35 +16,17 @@ from dm_cnn import MosquitoDenoiseCNN, features_list, NORM_DIV
 import feature_compute_reference as fcr
 
 # ─── Config ───
-COST_DOWN = True          # 与训练时的 cost_down 一致
+COST_DOWN = True  # 与训练时的 cost_down 一致
+GS = 8 # 与训练时的 GS 一致
 SCRIPT_DIR = os.path.dirname(__file__)
 suffix = "_cost_down" if COST_DOWN else ""
-# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn{suffix}.pth")
-# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_CH3216161_0715.pth")
-# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
-# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
-# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_sig.pth")
-MODEL_PATH = os.path.join(SCRIPT_DIR, f"./model/mosquito_denoise_cnn_qat_exported.pth")
-# MODEL_PATH = os.path.join(SCRIPT_DIR, f"mosquito_denoise_cnn_cost_down_32_16_8_sig.pth")
-# MODEL_PATH = os.path.join(SCRIPT_DIR, "mosquito_denoise_cnn_4k.pth")
-# TEST_DIR = r"C:\code\py\denoise\scripts\CNN_DM\gen_pattern_img"
-# TEST_DIR = os.path.join(SCRIPT_DIR, os.pardir, "test_data", "dot25")
+MODEL_PATH = os.path.join(SCRIPT_DIR, f"./model/mosquito_denoise_cnn_cost_down_grid_{GS}.pth")
 TEST_DIR = os.path.join(SCRIPT_DIR, "test_data")
-# TEST_DIR = r"C:\code\py\denoise\scripts\test_data"
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}_CH32")
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions_gen{suffix}")
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH32")
-# OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH3216168_sig")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_CH321616_sig_qat")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, f"predictions{suffix}_grid_{GS}")
 
 # 训练时保存的最佳阈值（不存在则用 0.5）
-TH_PATH = os.path.join(SCRIPT_DIR, f"best_th{suffix}.npy")
-if os.path.exists(TH_PATH):
-    DM_TH = float(np.load(TH_PATH))
-else:
-    DM_TH = 0.5
+DM_TH = 0.5
 
-GS = 8
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
 FEATURE_IDX = None  # set at runtime
 LOW_VAR_TH = 60
@@ -79,7 +61,10 @@ def compute_grid_features(y_full):
     def tb(t):
         return t.reshape(gh, GS, gw, GS).permute(0, 2, 1, 3).contiguous()
 
-    yb = tb(y_t); vb = tb(var_t); hb = tb(he_t); veb = tb(ve_t)
+    yb = tb(y_t);
+    vb = tb(var_t);
+    hb = tb(he_t);
+    veb = tb(ve_t)
     vf = vb.reshape(gh, gw, -1)
     hf = hb.reshape(gh, gw, -1)
     vff = veb.reshape(gh, gw, -1)
@@ -87,7 +72,8 @@ def compute_grid_features(y_full):
     # NaN-safe helpers
     def sf_mean(a):
         mask = torch.isnan(a)
-        return torch.where(mask, torch.tensor(0.0, device=device), a).sum(dim=-1) / (~mask).float().sum(dim=-1).clamp(min=1)
+        return torch.where(mask, torch.tensor(0.0, device=device), a).sum(dim=-1) / (~mask).float().sum(dim=-1).clamp(
+            min=1)
 
     def sf_count_lt(a, th):
         mask = torch.isnan(a)
@@ -105,7 +91,9 @@ def compute_grid_features(y_full):
     grid[..., 2] = sf_count_gt(vf, HIGH_VAR_TH)
 
     # 3-4: edge
-    hs = sf_mean(hf); vs = sf_mean(vff); ms = torch.max(hs, vs)
+    hs = sf_mean(hf);
+    vs = sf_mean(vff);
+    ms = torch.max(hs, vs)
     grid[..., 3] = ms
     grid[..., 4] = torch.where(ms > 1e-6, (hs - vs).abs() / ms, torch.tensor(0.0, device=device))
 
@@ -115,25 +103,26 @@ def compute_grid_features(y_full):
     d2c = yb[:, :, :-2, :] - 2.0 * yb[:, :, 1:-1, :] + yb[:, :, 2:, :]
     col_sd = d2c.abs().mean(dim=-2).mean(dim=-1)
     sd_mx = torch.max(row_sd, col_sd)
-    grid[..., 5] = sd_mx                                     # second_diff_max
-    grid[..., 6] = torch.where(sd_mx > 0, torch.min(row_sd, col_sd) / sd_mx, torch.tensor(0.0, device=device))  # second_diff_min_max
+    grid[..., 5] = sd_mx  # second_diff_max
+    grid[..., 6] = torch.where(sd_mx > 0, torch.min(row_sd, col_sd) / sd_mx,
+                               torch.tensor(0.0, device=device))  # second_diff_min_max
 
     # 14-15: row/col diff
     rm = yb.mean(dim=-1)
     rd = (rm[..., 1:] - rm[..., :-1]).abs()
-    grid[..., 14] = rd.amax(dim=-1)                        # row_diff_max
+    grid[..., 14] = rd.amax(dim=-1)  # row_diff_max
     cm = yb.mean(dim=-2)
     cd = (cm[..., 1:] - cm[..., :-1]).abs()
-    grid[..., 15] = cd.amax(dim=-1)                        # col_diff_max
+    grid[..., 15] = cd.amax(dim=-1)  # col_diff_max
 
     # ── Ringing: batched torch ──
     def _ringing_batch(v):
         dv = torch.diff(v, dim=-1)
         if dv.shape[-1] < 2:
             return torch.zeros(v.shape[:-1], device=device), \
-                   torch.zeros(v.shape[:-1], device=device), \
-                   torch.zeros(v.shape[:-1], device=device), \
-                   torch.zeros(v.shape[:-1], device=device)
+                torch.zeros(v.shape[:-1], device=device), \
+                torch.zeros(v.shape[:-1], device=device), \
+                torch.zeros(v.shape[:-1], device=device)
         d1_for_d2 = torch.diff(v, dim=-1)
         d2 = torch.diff(d1_for_d2, dim=-1)
 
@@ -156,24 +145,24 @@ def compute_grid_features(y_full):
 
         ds_ = norm_(dyn.float(), 20.0, 120.0)
         d2s_ = norm_(d2_en.float(), 5.0, 60.0)
-        ss_ = norm_(chg.float(), 1.0, 4.0)
+        ss_ = norm_((chg // (GS // 8)).float(), 1.0, 4.0)
         return 0.45 * ds_ + 0.35 * d2s_ + 0.20 * ss_, ds_, d2s_, ss_
 
-    rt, _, _, _ = _ringing_batch(yb)           # (gh,gw,8) row totals
+    rt, _, _, _ = _ringing_batch(yb)  # (gh,gw,8) row totals
     ct, _, _, _ = _ringing_batch(yb.permute(0, 1, 3, 2))  # (gh,gw,8) col totals
 
-    rm_mean = rt.mean(dim=-1)                  # row_ringing_mean
-    cm_mean = ct.mean(dim=-1)                  # col_ringing_mean
-    rmx = torch.max(rm_mean, cm_mean)          # ringing_mean_max
-    rmn = torch.min(rm_mean, cm_mean)          # ringing_mean_min
+    rm_mean = rt.mean(dim=-1)  # row_ringing_mean
+    cm_mean = ct.mean(dim=-1)  # col_ringing_mean
+    rmx = torch.max(rm_mean, cm_mean)  # ringing_mean_max
+    rmn = torch.min(rm_mean, cm_mean)  # ringing_mean_min
 
-    grid[..., 7] = rmx                                             # ringing_mean_max
-    grid[..., 8] = rmn                                             # ringing_mean_min
+    grid[..., 7] = rmx  # ringing_mean_max
+    grid[..., 8] = rmn  # ringing_mean_min
     grid[..., 9] = torch.where(rmx > 0, rmn / rmx, torch.tensor(0.0, device=device))  # ringing_mean_min_max
-    grid[..., 10] = rt.amax(dim=-1)                                 # row_ringing_max
-    grid[..., 11] = rm_mean                                         # row_ringing_mean
-    grid[..., 12] = ct.amax(dim=-1)                                 # col_ringing_max
-    grid[..., 13] = cm_mean                                         # col_ringing_mean
+    grid[..., 10] = rt.amax(dim=-1)  # row_ringing_max
+    grid[..., 11] = rm_mean  # row_ringing_mean
+    grid[..., 12] = ct.amax(dim=-1)  # col_ringing_max
+    grid[..., 13] = cm_mean  # col_ringing_mean
 
     return grid.cpu().numpy()
 
@@ -195,7 +184,7 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     print("  Computing grid features...", end=" ", flush=True)
     t0 = time.time()
     grid = compute_grid_features(y_full)
-    print(f"[{time.time()-t0:.0f}s]")
+    print(f"[{time.time() - t0:.0f}s]")
 
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
     t0 = time.time()
@@ -206,7 +195,7 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     from numpy.lib.stride_tricks import sliding_window_view
     grid_pad = np.pad(grid, ((4, 4), (4, 4), (0, 0)), mode='edge')
     grid_norm = np.clip(grid_pad / div_arr, 0, 1)
-    X = np.ascontiguousarray(grid_norm).reshape(1, (8+gh), (8+gw), 16).transpose(0, 3, 1, 2)
+    X = np.ascontiguousarray(grid_norm).reshape(1, (8 + gh), (8 + gw), 16).transpose(0, 3, 1, 2)
 
     pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
     if len(X) > 0:
@@ -215,11 +204,11 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
             probs = model(X_t).cpu().numpy().flatten()
         pred_map.ravel()[:] = probs
 
-    print(f"[{time.time()-t0:.0f}s]")
+    print(f"[{time.time() - t0:.0f}s]")
 
     dm_count = int(np.nansum(pred_map > DM_TH))
     valid_count = int(np.sum(~np.isnan(pred_map)))
-    print(f"  DM: {dm_count}/{valid_count} ({100*dm_count/max(valid_count,1):.1f}%)")
+    print(f"  DM: {dm_count}/{valid_count} ({100 * dm_count / max(valid_count, 1):.1f}%)")
 
     y_norm = np.clip(y_full, 0, 255).astype(np.uint8)
     display = cv2.cvtColor(y_norm, cv2.COLOR_GRAY2BGR)
@@ -229,16 +218,16 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
             p = pred_map[bi, bj]
             if np.isnan(p) or p <= DM_TH:
                 continue
-            y1, y2 = bi*GS, min(bi*GS+GS, H)
-            x1, x2 = bj*GS, min(bj*GS+GS, W)
+            y1, y2 = bi * GS, min(bi * GS + GS, H)
+            x1, x2 = bj * GS, min(bj * GS + GS, W)
             overlay = display[y1:y2, x1:x2].astype(np.float64)
-            overlay[:, :, 2] = np.clip(overlay[:, :, 2]*0.6 + 255*0.4, 0, 255)
+            overlay[:, :, 2] = np.clip(overlay[:, :, 2] * 0.6 + 255 * 0.4, 0, 255)
             display[y1:y2, x1:x2] = overlay.astype(np.uint8)
 
-    display[0::8, :] = (100, 100, 100)
-    display[:, 0::8] = (100, 100, 100)
+    # display[0::GS, :] = (100, 100, 100)
+    # display[:, 0::GS] = (100, 100, 100)
 
-    cv2.putText(display, f"CNN DM: {dm_count}/{valid_count} ({100*dm_count/max(valid_count,1):.1f}%)",
+    cv2.putText(display, f"CNN DM: {dm_count}/{valid_count} ({100 * dm_count / max(valid_count, 1):.1f}%)",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
     if save_debug:
         cnn_path = os.path.join(OUTPUT_DIR, Path(bmp_path).stem + "_cnn.png")
@@ -252,7 +241,7 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     # sigmaSpace    → 坐标空间标准差
     filtered_img = cv2.bilateralFilter(bgr, d=7, sigmaColor=50, sigmaSpace=50)
 
-    pred_map_8x8 = pred_map.repeat(8, axis=0).repeat(8, axis=1)
+    pred_map_8x8 = pred_map.repeat(GS, axis=0).repeat(GS, axis=1)
     # pred_map_8x8 shape: (gh*8, gw*8), 可能小于 (H, W) 如果 H/W 不是 8 的倍数
     ph = H - pred_map_8x8.shape[0]
     pw = W - pred_map_8x8.shape[1]
@@ -291,6 +280,7 @@ def main():
     if COST_DOWN:
         # 替换 sigmoid → Hard Sigmoid 降低推理计算量
         conv_w = [model.conv1, model.conv2, model.conv3, model.conv4]
+
         def _hard_sigmoid_forward(x):
             for c in conv_w[:3]:
                 x = torch.relu(c(x))
@@ -298,6 +288,7 @@ def main():
             x = x.view(x.size(0), -1)
             x = torch.clamp(x / 6 + 0.5, 0, 1)
             return x
+
         model.forward = _hard_sigmoid_forward
 
     print(f"Model loaded from {MODEL_PATH} (cost_down={COST_DOWN})")

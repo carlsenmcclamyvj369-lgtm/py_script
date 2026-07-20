@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 import os
 import random
 
-GS = 16
+GS = 8
 # =========================
 # 1. 只使用这16个特征
 # =========================
