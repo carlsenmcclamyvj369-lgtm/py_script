@@ -13,6 +13,7 @@ from nni.algorithms.compression.pytorch.quantization import QAT_Quantizer
 from nni.compression.pytorch.quantization.settings import set_quant_scheme_dtype
 
 from dm_cnn import MosquitoDenoiseCNN, MosquitoPatchDataset
+from ptq_quantize import MosquitoDenoiseCNN_Quant, QuantizedMosquitoCNN
 
 # =========================
 # 配置
@@ -83,7 +84,7 @@ print(f"Device: {device}")
 model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
 
 # 可选：加载预训练 FP32 权重加速收敛（不存在则从头训）
-pretrained_path = os.path.join(DATA_DIR, "mosquito_denoise_cnn_cost_down_32_16_sig.pth")
+pretrained_path = os.path.join(DATA_DIR, "mosquito_denoise_cnn_cost_down.pth")
 if os.path.exists(pretrained_path):
     model.load_state_dict(torch.load(pretrained_path, map_location=device), strict=False)
     print(f"Loaded pretrained weights from {pretrained_path}")
@@ -126,7 +127,7 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 # =========================
 # 训练
 # =========================
-epochs = 400
+epochs = 5
 best_f1 = 0.0
 
 for epoch in range(epochs):
@@ -167,53 +168,67 @@ for epoch in range(epochs):
     all_preds = np.concatenate(all_preds).flatten()
     all_labels = np.concatenate(all_labels).flatten()
 
-    # 扫阈值找最佳 F1
-    thresholds = np.arange(0.30, 0.75, 0.05)
-    best_th = 0.5
-    best_f1_epoch = 0.0
-    best_cm = np.zeros((2, 2), dtype=np.int64)
-    for th in thresholds:
-        pb = (all_preds > th).astype(np.int64)
-        tp = np.sum((pb == 1) & (all_labels == 1))
-        tn = np.sum((pb == 0) & (all_labels == 0))
-        fp = np.sum((pb == 1) & (all_labels == 0))
-        fn = np.sum((pb == 0) & (all_labels == 1))
-        prec = tp / (tp + fp + 1e-10)
-        rec = tp / (tp + fn + 1e-10)
-        f1_th = 2 * prec * rec / (prec + rec + 1e-10)
-        if f1_th > best_f1_epoch:
-            best_f1_epoch = f1_th
-            best_th = th
-            best_cm = np.array([[tn, fp], [fn, tp]])
+    # 固定阈值 0.5
+    th = 0.5
+    pb = (all_preds > th).astype(np.int64)
+    tp = np.sum((pb == 1) & (all_labels == 1))
+    tn = np.sum((pb == 0) & (all_labels == 0))
+    fp = np.sum((pb == 1) & (all_labels == 0))
+    fn = np.sum((pb == 0) & (all_labels == 1))
+    best_f1_epoch = 2 * tp / (2 * tp + fp + fn + 1e-10)
+    best_cm = np.array([[tn, fp], [fn, tp]])
 
-    acc = (best_cm[0, 0] + best_cm[1, 1]) / best_cm.sum()
-    prec = best_cm[1, 1] / (best_cm[1, 1] + best_cm[0, 1] + 1e-10)
-    rec = best_cm[1, 1] / (best_cm[1, 1] + best_cm[1, 0] + 1e-10)
+    acc = (tn + tp) / (tn + tp + fp + fn + 1e-10)
+    prec = tp / (tp + fp + 1e-10)
+    rec = tp / (tp + fn + 1e-10)
 
     print(f"Epoch [{epoch+1}/{epochs}]  Loss: {avg_loss:.6f}  "
-          f"Val Acc: {acc:.4f}  Prec: {prec:.4f}  Rec: {rec:.4f}  F1: {best_f1_epoch:.4f}  "
-          f"th={best_th:.2f}")
+          f"Val Acc: {acc:.4f}  Prec: {prec:.4f}  Rec: {rec:.4f}  F1: {best_f1_epoch:.4f}")
     print(f"  TN={best_cm[0,0]:>5d}  FP={best_cm[0,1]:>5d}  "
           f"FN={best_cm[1,0]:>5d}  TP={best_cm[1,1]:>5d}")
 
     if best_f1_epoch > best_f1:
         best_f1 = best_f1_epoch
-        torch.save(model.state_dict(), os.path.join(MODEL_DIR, "mosquito_denoise_cnn_qat.pth"))
-        np.save(os.path.join(DATA_DIR, "best_th_qat.npy"), np.array(best_th))
-        print(f"  >>> Model saved (F1 improved to {best_f1_epoch:.4f} @ th={best_th:.2f})")
+        torch.save(model.state_dict(), os.path.join(MODEL_DIR, "mosquito_denoise_cnn_qat_samllepoch.pth"))
+        print(f"  >>> Model saved (F1 improved to {best_f1_epoch:.4f})")
 
     scheduler.step()
     current_lr = optimizer.param_groups[0]['lr']
     print(f"  LR: {current_lr:.2e}")
 
 # =========================
-# 导出量化模型 + 校准参数
+# 导出 — 两份
 # =========================
-print("\nExporting quantized model...")
+print("\nExporting...")
+
+# 1) NNI export: 解开包装 + 保存 FP32 权重 + 校准参数
 quantizer.export_model(
-    model_path=os.path.join(MODEL_DIR, "mosquito_denoise_cnn_qat_exported.pth"),
+    model_path=os.path.join(MODEL_DIR, "mosquito_denoise_cnn_qat_fp32.pth"),
     calibration_path=os.path.join(MODEL_DIR, "mosquito_denoise_cnn_qat_calib.json"),
 )
+print(f"  FP32 weights: {MODEL_DIR}/mosquito_denoise_cnn_qat_fp32.pth")
+
+# 2) 转成真正 INT8 模型，供 predict_int8.py 加载
+model_q = MosquitoDenoiseCNN_Quant(cost_down=COST_DOWN)
+model_q.load_state_dict(model.state_dict())
+model_q.eval()
+model_q_fused = torch.quantization.fuse_modules(model_q, [
+    ['conv1', 'relu1'], ['conv2', 'relu2'], ['conv3', 'relu3'],
+], inplace=False)
+model_int8 = QuantizedMosquitoCNN(model_q_fused)
+model_int8.eval()
+model_int8.qconfig = torch.quantization.default_qconfig
+model_int8 = torch.quantization.prepare(model_int8, inplace=False)
+
+# Calibration（用几批训练数据）
+with torch.no_grad():
+    for i, (x, _) in enumerate(train_loader):
+        model_int8(x)
+        if i >= 10:
+            break
+
+model_int8 = torch.quantization.convert(model_int8, inplace=False)
+int8_path = os.path.join(MODEL_DIR, "mosquito_denoise_cnn_qat_int8_full.pth")
+torch.save(model_int8, int8_path)
+print(f"  INT8 model: {int8_path}")
 print(f"Done — Best F1: {best_f1:.4f}")
-print(f"  Model:  {MODEL_DIR}/mosquito_denoise_cnn_qat_exported.pth")
-print(f"  Calib:  {MODEL_DIR}/mosquito_denoise_cnn_qat_calib.json")
