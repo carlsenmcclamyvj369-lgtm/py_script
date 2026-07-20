@@ -7,26 +7,27 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 import os
 import random
 
+GS = 16
 # =========================
 # 1. 只使用这16个特征
 # =========================
 features_list = [
-    'mean_var',              # 1
-    'low_var_count',         # 2
-    'high_var_count',        # 3
-    'edge_strength',         # 4
-    'edge_orientation_conf', # 5
-    'second_diff_max',       # 6
-    'second_diff_min_max',   # 7
-    'ringing_mean_max',      # 8
-    'ringing_mean_min',      # 9
+    'mean_var',  # 1
+    'low_var_count',  # 2
+    'high_var_count',  # 3
+    'edge_strength',  # 4
+    'edge_orientation_conf',  # 5
+    'second_diff_max',  # 6
+    'second_diff_min_max',  # 7
+    'ringing_mean_max',  # 8
+    'ringing_mean_min',  # 9
     'ringing_mean_min_max',  # 10
-    'row_ringing_max',       # 11
-    'row_ringing_mean',      # 12
-    'col_ringing_max',       # 13
-    'col_ringing_mean',      # 14
-    'row_diff_max',          # 15
-    'col_diff_max',          # 16
+    'row_ringing_max',  # 11
+    'row_ringing_mean',  # 12
+    'col_ringing_max',  # 13
+    'col_ringing_mean',  # 14
+    'row_diff_max',  # 15
+    'col_diff_max',  # 16
 ]
 
 # =========================
@@ -34,24 +35,25 @@ features_list = [
 #    根据 compute_labeled_features.py/markdown
 # =========================
 NORM_DIV = {
-    'mean_var': 1020.0,             # 1
-    'low_var_count': 64.0,          # 2
-    'high_var_count': 64.0,         # 3
-    'edge_strength': 255.0,         # 4
-    'edge_orientation_conf': 1.0,   # 5
-    'second_diff_max': 510.0,       # 6
-    'second_diff_min_max': 1.0,     # 7
-    'ringing_mean_max': 1.0,        # 8
-    'ringing_mean_min': 1.0,        # 9
-    'ringing_mean_min_max': 1.0,    # 10
-    'row_ringing_max': 1.0,         # 11
-    'row_ringing_mean': 1.0,        # 12
-    'col_ringing_max': 1.0,         # 13
-    'col_ringing_mean': 1.0,        # 14
+    'mean_var': 1020.0,  # 1
+    'low_var_count': 64.0 * (GS // 8) * (GS // 8),  # 2
+    'high_var_count': 64.0 * (GS // 8) * (GS // 8),  # 3
+    'edge_strength': 255.0,  # 4
+    'edge_orientation_conf': 1.0,  # 5
+    'second_diff_max': 510.0,  # 6
+    'second_diff_min_max': 1.0,  # 7
+    'ringing_mean_max': 1.0,  # 8
+    'ringing_mean_min': 1.0,  # 9
+    'ringing_mean_min_max': 1.0,  # 10
+    'row_ringing_max': 1.0,  # 11
+    'row_ringing_mean': 1.0,  # 12
+    'col_ringing_max': 1.0,  # 13
+    'col_ringing_mean': 1.0,  # 14
     # row/col diff 是亮度差，按 255 归一化
-    'row_diff_max': 255.0,          # 15
-    'col_diff_max': 255.0,          # 16
+    'row_diff_max': 255.0,  # 15
+    'col_diff_max': 255.0,  # 16
 }
+
 
 def normalize_features(df, features_list):
     x = df[features_list].copy()
@@ -60,6 +62,7 @@ def normalize_features(df, features_list):
         x[feat] = x[feat].astype(np.float32) / div
     x = np.clip(x.values.astype(np.float32), 0.0, 1.0)
     return x
+
 
 # =========================
 # 3. Dataset
@@ -100,21 +103,16 @@ class MosquitoPatchDataset(Dataset):
     def __getitem__(self, idx):
         return self.x[idx], self.y[idx]
 
+
 # =========================
 # 4. 4层 CNN Model
 #    用 cost_down=True 去掉 BN + sigmoid → ReLU+Clip
 # =========================
 class MosquitoDenoiseCNN(nn.Module):
-    def __init__(self, cost_down=False):
+    def __init__(self, cost_down=True):
         super(MosquitoDenoiseCNN, self).__init__()
         self.cost_down = cost_down
         if cost_down:
-            # self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
-            # self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
-            # self.conv3 = nn.Conv2d(16, 8, kernel_size=3, padding=0)
-            # self.conv4 = nn.Conv2d(8, 1, kernel_size=3, padding=0)
-            # self._init_weights()
-            #
             self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
             self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
             self.conv3 = nn.Conv2d(16, 16, kernel_size=3, padding=0)
@@ -128,6 +126,10 @@ class MosquitoDenoiseCNN(nn.Module):
             self.bn1 = nn.BatchNorm2d(32)
             self.bn2 = nn.BatchNorm2d(64)
             self.bn3 = nn.BatchNorm2d(16)
+        self.relu1 = nn.ReLU()
+        self.relu2 = nn.ReLU()
+        self.relu3 = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
     def _init_weights(self):
         for m in self.modules():
@@ -137,9 +139,9 @@ class MosquitoDenoiseCNN(nn.Module):
 
     def forward(self, x):
         if self.cost_down:
-            x = F.relu(self.conv1(x))
-            x = F.relu(self.conv2(x))
-            x = F.relu(self.conv3(x))
+            x = self.relu1(self.conv1(x))
+            x = self.relu2(self.conv2(x))
+            x = self.relu3(self.conv3(x))
             x = self.conv4(x)
             x = x.view(x.size(0), -1)
             # if self.use_hard_sigmoid:
@@ -149,13 +151,26 @@ class MosquitoDenoiseCNN(nn.Module):
             x = torch.sigmoid(x)
 
         else:
-            x = F.relu(self.bn1(self.conv1(x)))
-            x = F.relu(self.bn2(self.conv2(x)))
-            x = F.relu(self.bn3(self.conv3(x)))
+            x = self.relu1(self.bn1(self.conv1(x)))
+            x = self.relu2(self.bn2(self.conv2(x)))
+            x = self.relu3(self.bn3(self.conv3(x)))
             x = self.conv4(x)
             x = x.view(x.size(0), -1)
             x = torch.sigmoid(x)
         return x
+
+
+def load_data_dirs(txt_file):
+    data_dirs = []
+
+    with open(txt_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:  # 跳过空行
+                data_dirs.append(line)
+
+    return data_dirs
+
 
 # =========================
 # 5. 以下训练代码仅在直接运行时执行
@@ -172,23 +187,40 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = False
     DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
-    dm_datasets = [
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm.csv"), label=1),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_merged.csv"), label=1),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_x3.csv"), label=1),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_4k_0707.csv"), label=1),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_seq_0710.csv"), label=1),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_test_data_append_0715.csv"), label=1),
-    ]
-    not_dm_datasets = [
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm.csv"), label=0),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_merged.csv"), label=0),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x3.csv"), label=0),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x2_0707.csv"), label=0),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_4k_0707.csv"), label=0),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_seq_0710.csv"), label=0),
-        MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_test_data_append_0715.csv"), label=0),
-    ]
+    if GS == 8:
+        print("GS 8 TRAIN:")
+        dm_datasets = [
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm.csv"), label=1),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_merged.csv"), label=1),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_x3.csv"), label=1),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_4k_0707.csv"), label=1),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_seq_0710.csv"), label=1),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_test_data_append_0715.csv"), label=1),
+        ]
+        not_dm_datasets = [
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_merged.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x3.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x2_0707.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_4k_0707.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_seq_0710.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_test_data_append_0715.csv"), label=0),
+        ]
+    else:
+        print("GS 16 TRAIN:")
+        txt_file = "grid_16_dataset_paths.txt"
+        data_dirs = load_data_dirs(txt_file)
+        dm_datasets = []
+        not_dm_datasets = []
+
+        for data_dir in data_dirs:
+            dm_csv_path = os.path.join(data_dir, "grid_16_dm_9x9.csv")
+            if os.path.exists(dm_csv_path):
+                dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
+
+            not_dm_csv_path = os.path.join(data_dir, "grid_16_not_dm_9x9.csv")
+            if os.path.exists(not_dm_csv_path):
+                not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
 
     dm_dataset = ConcatDataset(dm_datasets)
     not_dm_dataset = ConcatDataset(not_dm_datasets)
@@ -285,13 +317,7 @@ if __name__ == "__main__":
         all_preds = np.concatenate(all_preds).flatten()
         all_labels = np.concatenate(all_labels).flatten()
 
-        # 扫阈值找最佳 F1
-        if COST_DOWN:
-            # thresholds = np.arange(0.30, 0.75, 0.05)
-            thresholds = [0.5]
-
-        else:
-            thresholds = [0.5]
+        thresholds = [0.5]
         best_th = 0.5
         best_f1_epoch = 0.0
         best_cm = np.zeros((2, 2), dtype=np.int64)
@@ -309,23 +335,23 @@ if __name__ == "__main__":
                 best_th = th
                 best_cm = np.array([[tn, fp], [fn, tp]])
 
-        acc = (best_cm[0,0] + best_cm[1,1]) / best_cm.sum()
-        prec = best_cm[1,1] / (best_cm[1,1] + best_cm[0,1] + 1e-10)
-        rec = best_cm[1,1] / (best_cm[1,1] + best_cm[1,0] + 1e-10)
+        acc = (best_cm[0, 0] + best_cm[1, 1]) / best_cm.sum()
+        prec = best_cm[1, 1] / (best_cm[1, 1] + best_cm[0, 1] + 1e-10)
+        rec = best_cm[1, 1] / (best_cm[1, 1] + best_cm[1, 0] + 1e-10)
 
-        print(f"Epoch [{epoch+1}/{epochs}]  Loss: {avg_loss:.6f}  "
+        print(f"Epoch [{epoch + 1}/{epochs}]  Loss: {avg_loss:.6f}  "
               f"Val Acc: {acc:.4f}  Prec: {prec:.4f}  Rec: {rec:.4f}  F1: {best_f1_epoch:.4f}  "
               f"th={best_th:.2f}")
         print(f"  Confusion Matrix:")
-        print(f"    TN={best_cm[0,0]:>5d}  FP={best_cm[0,1]:>5d}")
-        print(f"    FN={best_cm[1,0]:>5d}  TP={best_cm[1,1]:>5d}")
+        print(f"    TN={best_cm[0, 0]:>5d}  FP={best_cm[0, 1]:>5d}")
+        print(f"    FN={best_cm[1, 0]:>5d}  TP={best_cm[1, 1]:>5d}")
 
         if best_f1_epoch > best_f1:
             best_f1 = best_f1_epoch
             suffix = "_cost_down" if COST_DOWN else ""
             model_dir = os.path.join(DATA_DIR, "model")
             os.makedirs(model_dir, exist_ok=True)
-            torch.save(model.state_dict(), os.path.join(model_dir, f"mosquito_denoise_cnn{suffix}.pth"))
+            torch.save(model.state_dict(), os.path.join(model_dir, f"mosquito_denoise_cnn{suffix}_grid_{GS}.pth"))
             np.save(f"best_th{suffix}.npy", np.array(best_th))
             print(f"  >>> Model saved (F1 improved to {best_f1_epoch:.4f} @ th={best_th:.2f})")
 
