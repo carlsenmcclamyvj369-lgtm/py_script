@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from sympy import true
 from torch.optim import Adam, lr_scheduler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
@@ -14,8 +15,8 @@ from torchvision import datasets, transforms
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 
-from nni.algorithms.compression.pytorch.quantization.am_dorefa_quantizer import AmDoReFaQuantizer
-from nni.algorithms.compression.pytorch.quantization.qat_quantizer import QAT_Quantizer
+from nni.algorithms.compression.pytorch.quantization import DoReFaQuantizer as AmDoReFaQuantizer
+from nni.algorithms.compression.pytorch.quantization import QAT_Quantizer
 from nni.compression.pytorch.quantization.settings import set_quant_scheme_dtype
 
 from CNN_DM.results.results_costdown_cmp.CNN_CD_no_BN.predict_cnn import COST_DOWN
@@ -271,7 +272,7 @@ def main():
     output_range_dict = {"relu1": [0, 1], "relu2": [0, 1], "relu3": [0, 1], "sigmoid": [0, 1]}
 
     ### replace with your own model
-    model = MosquitoDenoiseCNN(C).to(device)
+    model = MosquitoDenoiseCNN(cost_down=true).to(device)
     # state = torch.load(os.path.join(model_pth, 'model.pth')) l
     # print(model)
     # print(state)

@@ -7,7 +7,6 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 import os
 import random
 
-GS = 16
 # =========================
 # 1. 只使用这16个特征
 # =========================
@@ -34,32 +33,37 @@ features_list = [
 # 2. 固定归一化到 [0, 1]
 #    根据 compute_labeled_features.py/markdown
 # =========================
-NORM_DIV = {
-    'mean_var': 1020.0,  # 1
-    'low_var_count': 64.0 * (GS // 8) * (GS // 8),  # 2
-    'high_var_count': 64.0 * (GS // 8) * (GS // 8),  # 3
-    'edge_strength': 255.0,  # 4
-    'edge_orientation_conf': 1.0,  # 5
-    'second_diff_max': 510.0,  # 6
-    'second_diff_min_max': 1.0,  # 7
-    'ringing_mean_max': 1.0,  # 8
-    'ringing_mean_min': 1.0,  # 9
-    'ringing_mean_min_max': 1.0,  # 10
-    'row_ringing_max': 1.0,  # 11
-    'row_ringing_mean': 1.0,  # 12
-    'col_ringing_max': 1.0,  # 13
-    'col_ringing_mean': 1.0,  # 14
-    # row/col diff 是亮度差，按 255 归一化
-    'row_diff_max': 255.0,  # 15
-    'col_diff_max': 255.0,  # 16
-}
+def make_norm_div(gs):
+    """根据 block size gs 构造归一化除数 dict。"""
+    return {
+        'mean_var': 1020.0,  # 1
+        'low_var_count': 64.0 * (gs // 8) * (gs // 8),  # 2 — 每个 block 的像素数
+        'high_var_count': 64.0 * (gs // 8) * (gs // 8),  # 3 — 同上
+        'edge_strength': 255.0,  # 4
+        'edge_orientation_conf': 1.0,  # 5
+        'second_diff_max': 510.0,  # 6
+        'second_diff_min_max': 1.0,  # 7
+        'ringing_mean_max': 1.0,  # 8
+        'ringing_mean_min': 1.0,  # 9
+        'ringing_mean_min_max': 1.0,  # 10
+        'row_ringing_max': 1.0,  # 11
+        'row_ringing_mean': 1.0,  # 12
+        'col_ringing_max': 1.0,  # 13
+        'col_ringing_mean': 1.0,  # 14
+        # row/col diff 是亮度差，按 255 归一化
+        'row_diff_max': 255.0,  # 15
+        'col_diff_max': 255.0,  # 16
+    }
 
 
-def normalize_features(df, features_list):
+NORM_DIV = make_norm_div(8)
+
+
+def normalize_features(df, features_list, gs=8):
+    norm_div = make_norm_div(gs)
     x = df[features_list].copy()
     for feat in features_list:
-        div = NORM_DIV[feat]
-        x[feat] = x[feat].astype(np.float32) / div
+        x[feat] = x[feat].astype(np.float32) / norm_div[feat]
     x = np.clip(x.values.astype(np.float32), 0.0, 1.0)
     return x
 
@@ -69,7 +73,7 @@ def normalize_features(df, features_list):
 #    每81行 -> 一个 9x9 patch
 # =========================
 class MosquitoPatchDataset(Dataset):
-    def __init__(self, csv_path, label, patch_size=9):
+    def __init__(self, csv_path, label, patch_size=9, gs=8):
         df = pd.read_csv(csv_path)
         # 兼容你之前写的列名
         rename_map = {
@@ -82,7 +86,7 @@ class MosquitoPatchDataset(Dataset):
             raise ValueError(f"Missing feature columns: {missing}")
         self.patch_size = patch_size
         self.patch_area = patch_size * patch_size
-        x = normalize_features(df, features_list)
+        x = normalize_features(df, features_list, gs=gs)
         num_rows = x.shape[0]
         num_patches = num_rows // self.patch_area
         if num_patches == 0:
@@ -175,9 +179,7 @@ def load_data_dirs(txt_file):
 # =========================
 # 5. 以下训练代码仅在直接运行时执行
 # =========================
-if __name__ == "__main__":
-    # --- 开关：True=无BN+ReLU+Clip, False=BN+Sigmoid ---
-    COST_DOWN = True
+def train(gs, cost_down=True, epochs=20):
     SEED = 42
     random.seed(SEED)
     np.random.seed(SEED)
@@ -187,48 +189,21 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = False
     DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
-    if GS == 8:
+    if gs == 8:
         print("GS 8 TRAIN:")
         dm_datasets = [
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm.csv"), label=1),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_merged.csv"), label=1),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_x3.csv"), label=1),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_SR_4k_0707.csv"), label=1),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_seq_0710.csv"), label=1),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_dm_test_data_append_0715.csv"), label=1),
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_dm_9x9.csv"), label=1),
-
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_dm_9x9.csv"), label=1, gs=gs),
         ]
         not_dm_datasets = [
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm.csv"), label=0),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_merged.csv"), label=0),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x3.csv"), label=0),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_x2_0707.csv"), label=0),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_SR_4k_0707.csv"), label=0),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_seq_0710.csv"), label=0),
-            # MosquitoPatchDataset(os.path.join(DATA_DIR, "9x9_not_dm_test_data_append_0715.csv"), label=0),
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_not_dm_9x9.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_not_dm_9x9.csv"), label=0, gs=gs),
         ]
     else:
         print("GS 16 TRAIN:")
-        # txt_file = "grid_16_dataset_paths.txt"
-        # data_dirs = load_data_dirs(txt_file)
-        # dm_datasets = []
-        # not_dm_datasets = []
-        #
-        # for data_dir in data_dirs:
-        #     dm_csv_path = os.path.join(data_dir, "grid_16_dm_9x9.csv")
-        #     if os.path.exists(dm_csv_path):
-        #         dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
-        #
-        #     not_dm_csv_path = os.path.join(data_dir, "grid_16_not_dm_9x9.csv")
-        #     if os.path.exists(not_dm_csv_path):
-        #         not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
         dm_datasets = [
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_dm_9x9.csv"), label=1),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_dm_9x9.csv"), label=1, gs=gs),
         ]
         not_dm_datasets = [
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_not_dm_9x9.csv"), label=0),
+            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_not_dm_9x9.csv"), label=0, gs=gs),
         ]
 
     dm_dataset = ConcatDataset(dm_datasets)
@@ -264,9 +239,9 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
+    model = MosquitoDenoiseCNN(cost_down=cost_down).to(device)
 
-    if COST_DOWN:
+    if cost_down:
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
         max_grad_norm = 1.0
         label_smoothing = 0.05
@@ -280,7 +255,6 @@ if __name__ == "__main__":
         scheduler = None
     criterion = nn.BCELoss()
 
-    epochs = 400
     best_f1 = 0.0
 
     for epoch in range(epochs):
@@ -357,12 +331,17 @@ if __name__ == "__main__":
 
         if best_f1_epoch > best_f1:
             best_f1 = best_f1_epoch
-            suffix = "_cost_down" if COST_DOWN else ""
+            suffix = "_cost_down" if cost_down else ""
             model_dir = os.path.join(DATA_DIR, "model")
             os.makedirs(model_dir, exist_ok=True)
-            torch.save(model.state_dict(), os.path.join(model_dir, f"mosquito_denoise_cnn{suffix}_grid_{GS}.pth"))
-            np.save(f"best_th{suffix}.npy", np.array(best_th))
+            torch.save(model.state_dict(), os.path.join(model_dir, f"mosquito_denoise_cnn{suffix}_grid_{gs}.pth"))
+            np.save(os.path.join(model_dir, f"best_th{suffix}_grid_{gs}.npy"), np.array(best_th))
             print(f"  >>> Model saved (F1 improved to {best_f1_epoch:.4f} @ th={best_th:.2f})")
 
         if scheduler is not None:
             scheduler.step(best_f1_epoch)
+
+
+if __name__ == "__main__":
+    train(gs=8, cost_down=True)
+    train(gs=16, cost_down=True)
