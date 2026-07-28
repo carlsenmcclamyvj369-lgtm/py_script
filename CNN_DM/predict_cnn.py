@@ -29,8 +29,8 @@ DM_TH = 0.5
 
 OFFSETS_9x9 = [(dr, dc) for dr in range(-4, 5) for dc in range(-4, 5)]
 FEATURE_IDX = None  # set at runtime
-LOW_VAR_TH = 60
-HIGH_VAR_TH = 500
+LOW_VAR_TH = 20
+HIGH_VAR_TH = 128
 
 
 def get_block(map2d, bi, bj):
@@ -44,6 +44,7 @@ def compute_grid_features(y_full):
     """Compute 16 CNN features using vectorized torch ops. Returns (gh, gw, 16) numpy."""
     H, W = y_full.shape
     gh, gw = H // GS, W // GS
+    # gh, gw = (H + GS - 1) // GS, (W + GS - 1) // GS
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Pixel-level maps (numpy + cv2)
@@ -70,10 +71,10 @@ def compute_grid_features(y_full):
     vff = veb.reshape(gh, gw, -1)
 
     # NaN-safe helpers
-    def sf_mean(a):
+    def sf_mean(a, factor):
         mask = torch.isnan(a)
-        return torch.where(mask, torch.tensor(0.0, device=device), a).sum(dim=-1) / (~mask).float().sum(dim=-1).clamp(
-            min=1)
+        return torch.where(mask, torch.tensor(0.0, device=device), a).sum(dim=-1) * factor // (
+                    (~mask).float().sum(dim=-1).clamp(min=1) * 4)
 
     def sf_count_lt(a, th):
         mask = torch.isnan(a)
@@ -86,34 +87,36 @@ def compute_grid_features(y_full):
     grid = torch.zeros((gh, gw, 16), device=device)
 
     # 0-2: var
-    grid[..., 0] = sf_mean(vf)
-    grid[..., 1] = sf_count_lt(vf, LOW_VAR_TH)
-    grid[..., 2] = sf_count_gt(vf, HIGH_VAR_TH)
+    grid[..., 0] = torch.clamp(torch.floor(sf_mean(vf, 4)), 0, 255)
+    grid[..., 1] = torch.clamp(sf_count_lt(vf, LOW_VAR_TH) * (16 // GS) * (16 // GS), 0, 255)
+    grid[..., 2] = torch.clamp(sf_count_gt(vf, HIGH_VAR_TH) * (16 // GS) * (16 // GS), 0, 255)
 
     # 3-4: edge
-    hs = sf_mean(hf);
-    vs = sf_mean(vff);
+    hs = sf_mean(hf, 4);
+    vs = sf_mean(vff, 4);
     ms = torch.max(hs, vs)
-    grid[..., 3] = ms
-    grid[..., 4] = torch.where(ms > 1e-6, (hs - vs).abs() / ms, torch.tensor(0.0, device=device))
+    grid[..., 3] = torch.clamp(ms, 0, 255)
+    grid[..., 4] = torch.where(ms > 0, (hs - vs).abs() * 255 // ms, torch.tensor(0.0, device=device))
+    grid[..., 4] = torch.clamp(grid[..., 4], 0, 255)
 
     # 5-6: second diff
     d2r = yb[..., :-2] - 2.0 * yb[..., 1:-1] + yb[..., 2:]
-    row_sd = d2r.abs().mean(dim=-1).mean(dim=-1)
+    row_sd = torch.clamp(d2r.abs().sum(dim=-1).sum(dim=-1) * 4 // (GS * GS * 4), 0, 255)
     d2c = yb[:, :, :-2, :] - 2.0 * yb[:, :, 1:-1, :] + yb[:, :, 2:, :]
-    col_sd = d2c.abs().mean(dim=-2).mean(dim=-1)
+    col_sd = torch.clamp(d2c.abs().sum(dim=-2).sum(dim=-1) * 4 // (GS * GS * 4), 0, 255)
     sd_mx = torch.max(row_sd, col_sd)
     grid[..., 5] = sd_mx  # second_diff_max
-    grid[..., 6] = torch.where(sd_mx > 0, torch.min(row_sd, col_sd) / sd_mx,
+    grid[..., 6] = torch.where(sd_mx > 0, torch.min(row_sd, col_sd) * 255 // sd_mx,
                                torch.tensor(0.0, device=device))  # second_diff_min_max
+    grid[..., 6] = torch.clamp(grid[..., 6], 0, 255)
 
     # 14-15: row/col diff
-    rm = yb.mean(dim=-1)
+    rm = torch.floor(yb.mean(dim=-1))
     rd = (rm[..., 1:] - rm[..., :-1]).abs()
-    grid[..., 14] = rd.amax(dim=-1)  # row_diff_max
-    cm = yb.mean(dim=-2)
+    grid[..., 14] = torch.clamp(rd.amax(dim=-1), 0, 255)  # row_diff_max
+    cm = torch.floor(yb.mean(dim=-2))
     cd = (cm[..., 1:] - cm[..., :-1]).abs()
-    grid[..., 15] = cd.amax(dim=-1)  # col_diff_max
+    grid[..., 15] = torch.clamp(cd.amax(dim=-1), 0, 255)  # col_diff_max
 
     # ── Ringing: batched torch ──
     def _ringing_batch(v):
@@ -127,7 +130,7 @@ def compute_grid_features(y_full):
         d2 = torch.diff(d1_for_d2, dim=-1)
 
         dyn = v.amax(dim=-1) - v.amin(dim=-1)
-        d2_en = d2.abs().mean(dim=-1)
+        d2_en = torch.floor(d2.abs().mean(dim=-1))
         # sign changes
         sgn = torch.sign(dv)
         sgn[torch.abs(dv) < 3.0] = 0
@@ -140,31 +143,63 @@ def compute_grid_features(y_full):
             chg = torch.where(df, chg + 1, chg)
             last = torch.where(nz, sgn[..., i].long(), last)
 
-        def norm_(x, lo, hi):
-            return torch.clamp((x - lo) / (hi - lo), 0.0, 1.0) if hi > lo else torch.zeros_like(x)
+        def nr_curve2_tensor(input_val, reg_xth, reg_yth):
+            xth1 = reg_xth[0]
+            xth2 = xth1 + (1 << reg_xth[1])
+            xth3 = xth2 + (1 << reg_xth[2])
+            yth1, yth2, yth3 = reg_yth
+            half1 = reg_xth[1] if reg_xth[1] <= 1 else (1 << (reg_xth[1] - 1))
+            half2 = reg_xth[2] if reg_xth[2] <= 1 else (1 << (reg_xth[2] - 1))
+            output = torch.empty_like(input_val)
+            mask1 = input_val <= xth1
+            mask2 = input_val >= xth3
+            mask3 = (input_val > xth1) & (input_val <= xth2)
+            mask4 = (input_val > xth2) & (input_val < xth3)
 
-        ds_ = norm_(dyn.float(), 20.0, 120.0)
-        d2s_ = norm_(d2_en.float(), 5.0, 60.0)
-        ss_ = norm_((chg // (GS // 8)).float(), 1.0, 4.0)
-        return 0.45 * ds_ + 0.35 * d2s_ + 0.20 * ss_, ds_, d2s_, ss_
+            output[mask1] = yth1
+            output[mask2] = yth3
+            delt = input_val[mask3] - xth1
+            output[mask3] = yth1 + (((yth2 - yth1) * delt + half1) >> reg_xth[1])
+            delt = input_val[mask4] - xth2
+            output[mask4] = yth2 + (((yth3 - yth2) * delt + half2) >> reg_xth[2])
+            return output
+
+        ds_ = nr_curve2_tensor(dyn.long(), [20, 5, 6], [0, 85, 255])
+        d2s_ = nr_curve2_tensor(d2_en.long(), [5, 4, 5], [0, 85, 255])
+        reg_dms_sign_change_cnt_score = torch.tensor([0, 0, 85, 171, 255, 255, 255, 255])
+        ss_ = reg_dms_sign_change_cnt_score[(chg // (GS // 8))]
+        score = torch.clamp((115 * ds_ + 89 * d2s_ + 52 * ss_) // 256, 0, 255)
+        return score, ds_, d2s_, ss_
 
     rt, _, _, _ = _ringing_batch(yb)  # (gh,gw,8) row totals
     ct, _, _, _ = _ringing_batch(yb.permute(0, 1, 3, 2))  # (gh,gw,8) col totals
 
-    rm_mean = rt.mean(dim=-1)  # row_ringing_mean
-    cm_mean = ct.mean(dim=-1)  # col_ringing_mean
+    rm_mean = torch.floor(rt.float().mean(dim=-1))  # row_ringing_mean
+    cm_mean = torch.floor(ct.float().mean(dim=-1))  # col_ringing_mean
     rmx = torch.max(rm_mean, cm_mean)  # ringing_mean_max
     rmn = torch.min(rm_mean, cm_mean)  # ringing_mean_min
 
     grid[..., 7] = rmx  # ringing_mean_max
     grid[..., 8] = rmn  # ringing_mean_min
-    grid[..., 9] = torch.where(rmx > 0, rmn / rmx, torch.tensor(0.0, device=device))  # ringing_mean_min_max
+    grid[..., 9] = torch.where(rmx > 0, rmn * 255 // rmx, torch.tensor(0.0, device=device))  # ringing_mean_min_max
     grid[..., 10] = rt.amax(dim=-1)  # row_ringing_max
     grid[..., 11] = rm_mean  # row_ringing_mean
     grid[..., 12] = ct.amax(dim=-1)  # col_ringing_max
     grid[..., 13] = cm_mean  # col_ringing_mean
 
     return grid.cpu().numpy()
+
+
+def grid_print(grid):
+    grid_int = grid.astype(np.int32)
+    with open("grid.txt", "w") as f:
+        H, W, C = grid_int.shape
+
+        for h in range(H):
+            for w in range(W):
+                f.write(f"[{h:03d},{w:03d}] ")
+                f.write(" ".join("%05d" % x for x in grid_int[h, w]))
+                f.write("\n")
 
 
 @torch.no_grad()
@@ -184,6 +219,7 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     print("  Computing grid features...", end=" ", flush=True)
     t0 = time.time()
     grid = compute_grid_features(y_full)
+    grid_print(grid)
     print(f"[{time.time() - t0:.0f}s]")
 
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
@@ -194,7 +230,12 @@ def predict_image(model, device, bmp_path, output_path, save_debug=True):
     # Repeat-pad grid → sliding_window_view → fully vectorized
     from numpy.lib.stride_tricks import sliding_window_view
     grid_pad = np.pad(grid, ((4, 4), (4, 4), (0, 0)), mode='edge')
-    grid_norm = np.clip(grid_pad / div_arr, 0, 1)
+    # grid_norm = np.clip(grid_pad / div_arr, 0, 1)
+    if COST_DOWN:
+        grid_norm = np.clip(grid_pad / 255, 0, 1)
+    else:
+        grid_norm = np.clip(grid_pad / 255, 0, 1)
+
     X = np.ascontiguousarray(grid_norm).reshape(1, (8 + gh), (8 + gw), 16).transpose(0, 3, 1, 2)
 
     pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
@@ -276,20 +317,6 @@ def main():
     model = MosquitoDenoiseCNN(cost_down=COST_DOWN).to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device), strict=False)
     model.eval()
-
-    if COST_DOWN:
-        # 替换 sigmoid → Hard Sigmoid 降低推理计算量
-        conv_w = [model.conv1, model.conv2, model.conv3, model.conv4]
-
-        def _hard_sigmoid_forward(x):
-            for c in conv_w[:3]:
-                x = torch.relu(c(x))
-            x = conv_w[3](x)
-            x = x.view(x.size(0), -1)
-            x = torch.clamp(x / 6 + 0.5, 0, 1)
-            return x
-
-        model.forward = _hard_sigmoid_forward
 
     print(f"Model loaded from {MODEL_PATH} (cost_down={COST_DOWN})")
 

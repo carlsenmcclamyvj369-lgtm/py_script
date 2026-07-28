@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-
+GS = 16
 # ─────────────────────────────────────────────
 # 1. Y 亮度计算
 # ─────────────────────────────────────────────
@@ -11,7 +11,7 @@ def compute_y_from_rgb(img_array):
     r = img_array[:, :, 0].astype(np.float64)
     g = img_array[:, :, 1].astype(np.float64)
     b = img_array[:, :, 2].astype(np.float64)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return ((218 * r + 732 * g + 74 * b) // 1024).astype(np.float64) #u8
 
 
 # ─────────────────────────────────────────────
@@ -23,14 +23,29 @@ def compute_var_map(y_full):
     计算全图每个点的 3×3 窗口方差。
     返回 (h, w) 的 float64 数组，边界一圈为 np.nan。
     """
-    k = np.ones((3, 3), dtype=np.float64) / 9.0
-    mean = cv2.filter2D(y_full, -1, k, borderType=cv2.BORDER_REFLECT)
-    mean_sq = cv2.filter2D(y_full ** 2, -1, k, borderType=cv2.BORDER_REFLECT)
-    var_map = np.maximum(mean_sq - mean ** 2, 0)  # 防浮点误差负值
-    var_map[0, :] = np.nan
-    var_map[-1, :] = np.nan
-    var_map[:, 0] = np.nan
-    var_map[:, -1] = np.nan
+    pad = np.pad(y_full, ((1, 1), (1, 1)), mode='edge')
+
+    neighbors = [
+        pad[:-2, :-2],
+        pad[:-2, 1:-1],
+        pad[:-2, 2:],
+        pad[1:-1, :-2],
+        pad[1:-1, 1:-1],
+        pad[1:-1, 2:],
+        pad[2:, :-2],
+        pad[2:, 1:-1],
+        pad[2:, 2:]
+    ]
+
+    mean3x3 = sum(neighbors) * 28 // 256
+
+    var_map = sum(
+        np.abs(n - mean3x3)
+        for n in neighbors
+    ) // 2
+
+    var_map = np.clip(var_map, 0, 255).astype(np.float64)
+
     return var_map
 
 
@@ -105,9 +120,9 @@ def compute_edge_maps(y_full):
     """
     h, w = y_full.shape
     h_edge_map = np.full((h, w), np.nan, dtype=np.float64)
-    h_edge_map[:, 1:] = np.abs(np.diff(y_full, axis=1))
+    h_edge_map[:, :-1] = np.abs(np.diff(y_full, axis=1))
     v_edge_map = np.full((h, w), np.nan, dtype=np.float64)
-    v_edge_map[1:, :] = np.abs(np.diff(y_full, axis=0))
+    v_edge_map[:-1, :] = np.abs(np.diff(y_full, axis=0))
     return h_edge_map, v_edge_map
 
 
@@ -135,12 +150,12 @@ def compute_block_var_stats(y_full, var_map, gx, gy,
             sorted_vars = np.sort(block_vars)
             bi, bj = by // gy, bx // gx
             block_stats[(bi, bj)] = {
-                "mean_var": float(np.mean(block_vars)),
+                "mean_var": np.floor(np.mean(block_vars)),
                 "max_var": float(np.max(block_vars)),
-                "top5_var": float(np.mean(sorted_vars[-5:]) if len(sorted_vars) >= 5 else np.mean(sorted_vars)),
-                "low_var_count": int(np.sum(block_vars < low_th)),
-                "high_var_count": int(np.sum(block_vars > high_th)),
-                "very_high_var_count": int(np.sum(block_vars > very_high_th)),
+                "top5_var": np.floor(np.mean(sorted_vars[-5:]) if len(sorted_vars) >= 5 else np.mean(sorted_vars)),
+                "low_var_count": int(np.sum(block_vars < low_th) * (16//GS) * (16//GS)),
+                "high_var_count": int(np.sum(block_vars > high_th) * (16//GS) * (16//GS)),
+                "very_high_var_count": int(np.sum(block_vars > very_high_th) * (16//GS) * (16//GS)),
             }
     return block_stats
 
@@ -250,23 +265,23 @@ def compute_block_edge_stats(y_full, h_edge_map, v_edge_map, gx, gy,
             block_v = block_v[~np.isnan(block_v)]
             if len(block_h) == 0 or len(block_v) == 0:
                 continue
-            h_s = float(np.mean(block_h))
-            v_s = float(np.mean(block_v))
+            h_s = float(np.floor(np.mean(block_h)))
+            v_s = float(np.floor(np.mean(block_v)))
             max_strength = max(h_s, v_s)
             if max_strength <= max_strength_th:
                 orient_conf = 0.0
             else:
-                orient_conf = abs(h_s - v_s) / max_strength
+                orient_conf = (abs(h_s - v_s) * 255) // max_strength
             bi, bj = by // gy, bx // gx
             block_stats[(bi, bj)] = {
-                "edge_strength": max_strength,
-                "h_strength": h_s,
+                "edge_strength": np.clip(max_strength, 0, 255),
+                "h_strength": np.clip(h_s, 0, 255),
                 "h_strength_max": float(np.max(block_h)),
                 "h_strength_min": float(np.min(block_h)),
-                "v_strength": v_s,
+                "v_strength": np.clip(v_s, 0, 255),
                 "v_strength_max": float(np.max(block_v)),
                 "v_strength_min": float(np.min(block_v)),
-                "edge_orientation_conf": orient_conf,
+                "edge_orientation_conf": np.clip(orient_conf, 0, 255),
             }
     return block_stats
 
@@ -300,25 +315,25 @@ def compute_block_osc_stats(y_full, gx, gy):
                 v = block_y[ry, :]
                 if len(v) >= 3:
                     d2 = v[:-2] - 2 * v[1:-1] + v[2:]
-                    row_energies.append(float(np.mean(np.abs(d2))))
+                    row_energies.append(float(np.sum(np.abs(d2))))
             col_energies = []
             for rx in range(bw):
                 v = block_y[:, rx]
                 if len(v) >= 3:
                     d2 = v[:-2] - 2 * v[1:-1] + v[2:]
-                    col_energies.append(float(np.mean(np.abs(d2))))
+                    col_energies.append(float(np.sum(np.abs(d2))))
 
-            row_energy = float(np.mean(row_energies)) if row_energies else 0.0
-            col_energy = float(np.mean(col_energies)) if col_energies else 0.0
-            row_second_diff_max = float(np.max(row_energies)) if row_energies else 0.0
-            row_second_diff_min = float(np.min(row_energies)) if row_energies else 0.0
-            col_second_diff_max = float(np.max(col_energies)) if col_energies else 0.0
-            col_second_diff_min = float(np.min(col_energies)) if col_energies else 0.0
+            row_energy = float(np.clip(np.sum(row_energies) // (GS*GS), 0, 255)) if row_energies else 0.0
+            col_energy = float(np.clip(np.sum(col_energies) // (GS*GS), 0, 255)) if col_energies else 0.0
+            row_second_diff_max = float(np.max(row_energies) // GS) if row_energies else 0.0
+            row_second_diff_min = float(np.min(row_energies) // GS) if row_energies else 0.0
+            col_second_diff_max = float(np.max(col_energies) // GS) if col_energies else 0.0
+            col_second_diff_min = float(np.min(col_energies) // GS) if col_energies else 0.0
 
             # 行/列均值差
-            row_means = [float(block_y[r, :].mean()) for r in range(bh)]
+            row_means = [float(np.floor(block_y[r, :].mean())) for r in range(bh)]
             row_diffs = [abs(row_means[r+1] - row_means[r]) for r in range(bh - 1)] if bh >= 2 else [0.0]
-            col_means = [float(block_y[:, c].mean()) for c in range(bw)]
+            col_means = [float(np.floor(block_y[:, c].mean())) for c in range(bw)]
             col_diffs = [abs(col_means[c+1] - col_means[c]) for c in range(bw - 1)] if bw >= 2 else [0.0]
 
             bi, bj = by // gy, bx // gx
@@ -330,12 +345,12 @@ def compute_block_osc_stats(y_full, gx, gy):
                 "col_second_diff_max": col_second_diff_max,
                 "col_second_diff_min": col_second_diff_min,
                 "second_diff_max": max(row_energy, col_energy),
-                "second_diff_min_max": (min(row_energy, col_energy) / max(row_energy, col_energy))
+                "second_diff_min_max": (min(row_energy, col_energy) * 255 // max(row_energy, col_energy))
                                         if max(row_energy, col_energy) > 0 else 0.0,
                 "row_diff_mean": float(np.mean(row_diffs)),
-                "row_diff_max": float(np.max(row_diffs)),
+                "row_diff_max": float(np.clip(np.max(row_diffs), 0, 255)),
                 "col_diff_mean": float(np.mean(col_diffs)),
-                "col_diff_max": float(np.max(col_diffs)),
+                "col_diff_max": float(np.clip(np.max(col_diffs), 0, 255)),
             }
     return block_stats
 
@@ -348,14 +363,14 @@ def _norm(x, lo, hi):
     """将 x 归一化到 [0, 1]，区间由 lo/hi 定义"""
     if hi <= lo:
         return 0.0
-    return float(np.clip((x - lo) / (hi - lo), 0.0, 1.0))
+    return float(np.clip((x - lo) * 255 // (hi - lo), 0.0, 255.0))
 
 
 def ringing_score_vec(v, eps=3.0,
-                      dyn_lo=20, dyn_hi=120,
-                      d2_lo=5, d2_hi=60,
+                      dyn_lo=20, dyn_hi=116,
+                      d2_lo=5, d2_hi=53,
                       sign_lo=1, sign_hi=4,
-                      dyn_ratio=0.45, d2_ratio=0.35, sign_ratio=0.20):
+                      dyn_ratio=115, d2_ratio=89, sign_ratio=52):
     """
     对一维向量计算振铃轮廓评分。
     返回 (total_score, dyn_score, d2_score, sign_score) 均为 float。
@@ -364,7 +379,7 @@ def ringing_score_vec(v, eps=3.0,
     d = np.diff(v)
     d2 = np.diff(v, n=2)
     dyn = float(np.max(v) - np.min(v))
-    d2_energy = float(np.mean(np.abs(d2))) if len(d2) > 0 else 0.0
+    d2_energy = float(np.floor(np.mean(np.abs(d2)))) if len(d2) > 0 else 0.0
 
     signs = np.sign(d)
     signs[np.abs(d) < eps] = 0
@@ -377,15 +392,15 @@ def ringing_score_vec(v, eps=3.0,
     ds = _norm(dyn, dyn_lo, dyn_hi)
     d2s = _norm(d2_energy, d2_lo, d2_hi)
     ss = _norm(sign_changes, sign_lo, sign_hi)
-    total = dyn_ratio * ds + d2_ratio * d2s + sign_ratio * ss
+    total = np.clip((dyn_ratio * ds + d2_ratio * d2s + sign_ratio * ss)//256, 0, 255)
     return total, ds, d2s, ss
 
 
 def ringing_stats_for_block(block_y, bh, bw, eps=3.0,
-                             dyn_lo=20, dyn_hi=120,
-                             d2_lo=5, d2_hi=60,
-                             sign_lo=1, sign_hi=4,
-                             dyn_ratio=0.45, d2_ratio=0.35, sign_ratio=0.20):
+                            dyn_lo=20, dyn_hi=116,
+                            d2_lo=5, d2_hi=53,
+                            sign_lo=1, sign_hi=4,
+                            dyn_ratio=115, d2_ratio=89, sign_ratio=52):
     """
     计算一个 block 的行/列振铃轮廓统计，返回字典或 None。
     key 列表: row_ringing_max|min|mean, col_ringing_max|min|mean,
@@ -424,7 +439,7 @@ def ringing_stats_for_block(block_y, bh, bw, eps=3.0,
         "row_ringing_mean": row_mean,
         "ringing_mean_max": max(row_mean, col_mean),
         "ringing_mean_min": min(row_mean, col_mean),
-        "ringing_mean_min_max": (min(row_mean, col_mean) / max(row_mean, col_mean))
+        "ringing_mean_min_max": (min(row_mean, col_mean) * 255 // max(row_mean, col_mean))
                                  if max(row_mean, col_mean) > 0 else 0.0,
         "profile_ringing_max": float(np.max(all_scores)),
         "profile_ringing_mean": float(np.mean(all_scores)),

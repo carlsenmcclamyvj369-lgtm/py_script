@@ -60,11 +60,11 @@ NORM_DIV = make_norm_div(8)
 
 
 def normalize_features(df, features_list, gs=8):
-    norm_div = make_norm_div(gs)
+    # norm_div = make_norm_div(gs)
     x = df[features_list].copy()
     for feat in features_list:
-        x[feat] = x[feat].astype(np.float32) / norm_div[feat]
-    x = np.clip(x.values.astype(np.float32), 0.0, 1.0)
+        # div = NORM_DIV[feat]
+        x[feat] = np.clip(x[feat].astype(np.float32), 0, 255) / 255
     return x
 
 
@@ -116,7 +116,7 @@ class MosquitoDenoiseCNN(nn.Module):
     def __init__(self, cost_down=True):
         super(MosquitoDenoiseCNN, self).__init__()
         self.cost_down = cost_down
-        self.debug = True
+        self.debug = False
         if cost_down:
             self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
             self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
@@ -198,22 +198,35 @@ def train(gs, cost_down=True, epochs=20):
     torch.backends.cudnn.benchmark = False
     DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
-    if gs == 8:
-        print("GS 8 TRAIN:")
-        dm_datasets = [
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_dm_9x9.csv"), label=1, gs=gs),
-        ]
-        not_dm_datasets = [
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_not_dm_9x9.csv"), label=0, gs=gs),
-        ]
-    else:
-        print("GS 16 TRAIN:")
-        dm_datasets = [
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_dm_9x9.csv"), label=1, gs=gs),
-        ]
-        not_dm_datasets = [
-            MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_not_dm_9x9.csv"), label=0, gs=gs),
-        ]
+    txt_file = "grid_16_dataset_paths.txt"
+    data_dirs = load_data_dirs(txt_file)
+    dm_datasets = []
+    not_dm_datasets = []
+
+    for data_dir in data_dirs:
+        dm_csv_path = os.path.join(data_dir, "grid_16_dm_9x9.csv")
+        if os.path.exists(dm_csv_path):
+            dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
+
+        not_dm_csv_path = os.path.join(data_dir, "grid_16_not_dm_9x9.csv")
+        if os.path.exists(not_dm_csv_path):
+            not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
+    # if gs == 8:
+    #     print("GS 8 TRAIN:")
+    #     dm_datasets = [
+    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_dm_9x9.csv"), label=1, gs=gs),
+    #     ]
+    #     not_dm_datasets = [
+    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_not_dm_9x9.csv"), label=0, gs=gs),
+    #     ]
+    # else:
+    #     print("GS 16 TRAIN:")
+    #     dm_datasets = [
+    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_dm_9x9.csv"), label=1, gs=gs),
+    #     ]
+    #     not_dm_datasets = [
+    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_not_dm_9x9.csv"), label=0, gs=gs),
+    #     ]
 
     dm_dataset = ConcatDataset(dm_datasets)
     not_dm_dataset = ConcatDataset(not_dm_datasets)
