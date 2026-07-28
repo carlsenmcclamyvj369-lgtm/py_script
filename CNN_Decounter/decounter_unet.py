@@ -71,22 +71,26 @@ class OutConv(nn.Module):
 
 
 class DecounterUNet(nn.Module):
-    """4 层 U-Net: 下采样 2 次，输入 960x540 → 瓶颈 240x135。"""
-    def __init__(self, n_channels=3, n_classes=2, base_ch=64):
+    """4 层 U-Net: 通道数 8 → 16 → 32 → 64，下采样 3 次。"""
+    def __init__(self, n_channels=3, n_classes=2):
         super().__init__()
-        self.inc = DoubleConv(n_channels, base_ch)
-        self.down1 = Down(base_ch, base_ch * 2)
-        self.down2 = Down(base_ch * 2, base_ch * 4)
-        self.up1 = Up(base_ch * 4 + base_ch * 2, base_ch * 2)
-        self.up2 = Up(base_ch * 2 + base_ch, base_ch)
-        self.outc = OutConv(base_ch, n_classes)
+        self.inc = DoubleConv(n_channels, 8)
+        self.down1 = Down(8, 16)
+        self.down2 = Down(16, 32)
+        self.down3 = Down(32, 64)
+        self.up1 = Up(64 + 32, 32)
+        self.up2 = Up(32 + 16, 16)
+        self.up3 = Up(16 + 8, 8)
+        self.outc = OutConv(8, n_classes)
 
     def forward(self, x):
-        x1 = self.inc(x)          # 64,  H,   W
-        x2 = self.down1(x1)       # 128, H/2, W/2
-        x3 = self.down2(x2)       # 256, H/4, W/4  (bottleneck)
-        x = self.up1(x3, x2)      # 128, H/2, W/2
-        x = self.up2(x, x1)       # 64,  H,   W
+        x1 = self.inc(x)          # 8,   H,   W
+        x2 = self.down1(x1)       # 16,  H/2, W/2
+        x3 = self.down2(x2)       # 32,  H/4, W/4
+        x4 = self.down3(x3)       # 64,  H/8, W/8  (bottleneck)
+        x = self.up1(x4, x3)      # 32,  H/4, W/4
+        x = self.up2(x, x2)       # 16,  H/2, W/2
+        x = self.up3(x, x1)       # 8,   H,   W
         logits = self.outc(x)     # n_classes, H, W
         return logits
 

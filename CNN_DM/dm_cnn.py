@@ -116,6 +116,7 @@ class MosquitoDenoiseCNN(nn.Module):
     def __init__(self, cost_down=True):
         super(MosquitoDenoiseCNN, self).__init__()
         self.cost_down = cost_down
+        self.debug = True
         if cost_down:
             self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
             self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
@@ -144,20 +145,28 @@ class MosquitoDenoiseCNN(nn.Module):
     def forward(self, x):
         if self.cost_down:
             x = self.relu1(self.conv1(x))
+            # x = torch.clamp(x, 0, 1)
+            if self.debug: print(f"  after conv1+relu1: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = self.relu2(self.conv2(x))
+            # x = torch.clamp(x, 0, 1)
+            if self.debug: print(f"  after conv2+relu2: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = self.relu3(self.conv3(x))
+            # x = torch.clamp(x, 0, 1)
+            if self.debug: print(f"  after conv3+relu3: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = self.conv4(x)
+            # x = torch.clamp(x, -7, 7)
+            if self.debug: print(f"  after conv4 (pre-sigmoid): min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = x.view(x.size(0), -1)
-            # if self.use_hard_sigmoid:
-            #     x = torch.clamp(x / 6 + 0.5, 0, 1)   # Hard Sigmoid
-            # else: raw logits (BCEWithLogitsLoss 需要)
-            # x = torch.clip(torch.relu(x), 0, 1)
             x = torch.sigmoid(x)
+            if self.debug: print(f"  after sigmoid: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
 
         else:
             x = self.relu1(self.bn1(self.conv1(x)))
+            x = torch.clamp(x, 0, 1)
             x = self.relu2(self.bn2(self.conv2(x)))
+            x = torch.clamp(x, 0, 1)
             x = self.relu3(self.bn3(self.conv3(x)))
+            x = torch.clamp(x, 0, 1)
             x = self.conv4(x)
             x = x.view(x.size(0), -1)
             x = torch.sigmoid(x)

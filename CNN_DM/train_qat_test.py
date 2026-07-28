@@ -254,20 +254,22 @@ def main():
     #-----------------------------
     configure_list = [
         {
-            'quant_types': ['weight', 'input'],
-            'quant_bits': {'weight': 8, 'input': 8},
+            'quant_types': ['input', 'weight'],
+            'quant_bits': {'input': 8, 'weight': 8},
             'op_names': ['conv1']
         }, {
+            'quant_types': ['weight', 'output'],
+            'quant_bits': {'weight': 8, 'output': 8},
+            'op_names': ['conv2', 'conv3', 'conv4']
+        },
+        {
             'quant_types': ['output'],
             'quant_bits': {'output': 8},
             'op_names': ['relu1', 'relu2', 'relu3', 'sigmoid']
-        },
-        {
-            'quant_types': ['weight'],
-            'quant_bits': {'weight': 8},
-            'op_names': ['conv2', 'conv3', 'conv4']
         }
     ]
+
+    output_range_dict = {"relu1": [0, 1], "relu2": [0, 1], "relu3": [0, 1], "sigmoid": [0, 1]}
 
     output_range_dict = {"relu1": [0, 1], "relu2": [0, 1], "relu3": [0, 1], "sigmoid": [0, 1]}
 
@@ -293,7 +295,8 @@ def main():
         scheduler = None
 
     ### don't modify
-    quantizer = AmDoReFaQuantizer(model, configure_list, optimizer, output_range_dict)
+    dummy_input = torch.randn(1, 16, 9, 9).to(device)
+    quantizer = QAT_Quantizer(model, configure_list, optimizer, dummy_input=dummy_input)
     quantizer.compress()
     # print(model)
 
