@@ -215,7 +215,7 @@ def compute_grid_features(y_full, gs):
 
         ds_ = nr_curve2_tensor(dyn.long(), [20, 5, 6], [0, 85, 255])
         d2s_ = nr_curve2_tensor(d2_en.long(), [5, 4, 5], [0, 85, 255])
-        reg_dms_sign_change_cnt_score = torch.tensor([0, 0, 85, 171, 255, 255, 255, 255])
+        reg_dms_sign_change_cnt_score = torch.tensor([0, 0, 85, 171, 255, 255, 255, 255], device=device)
         ss_ = reg_dms_sign_change_cnt_score[(chg // (gs // 8))]
         score = torch.clamp((115 * ds_ + 89 * d2s_ + 52 * ss_) // 256, 0, 255)
         return score, ds_, d2s_, ss_
