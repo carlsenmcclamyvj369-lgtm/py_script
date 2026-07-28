@@ -1,3 +1,24 @@
+"""
+CNN mosquito noise detection — training script.
+
+用法:
+  python dm_cnn.py                          # 按 train() 默认参数跑 (GS=16, cost_down, 20 epochs)
+  python -c "from dm_cnn import *; train(gs=8, cost_down=True, epochs=400)"   # GS=8 训练
+
+导入使用:
+  from dm_cnn import MosquitoDenoiseCNN, MosquitoPatchDataset, make_norm_div
+
+  model = MosquitoDenoiseCNN(cost_down=True)
+  dataset = MosquitoPatchDataset("data.csv", label=1, gs=8)
+
+训练两个 GS 依次跑:
+  train(gs=8,  cost_down=True, epochs=400)
+  train(gs=16, cost_down=True, epochs=400)
+
+输出: model/mosquito_denoise_cnn_cost_down_grid_{GS}.pth
+       model/best_th_cost_down_grid_{GS}.npy
+"""
+
 import pandas as pd
 import numpy as np
 import torch
@@ -60,12 +81,10 @@ NORM_DIV = make_norm_div(8)
 
 
 def normalize_features(df, features_list, gs=8):
-    # norm_div = make_norm_div(gs)
     x = df[features_list].copy()
     for feat in features_list:
-        # div = NORM_DIV[feat]
         x[feat] = np.clip(x[feat].astype(np.float32), 0, 255) / 255
-    return x
+    return x.values.astype(np.float32)
 
 
 # =========================
@@ -145,16 +164,16 @@ class MosquitoDenoiseCNN(nn.Module):
     def forward(self, x):
         if self.cost_down:
             x = self.relu1(self.conv1(x))
-            # x = torch.clamp(x, 0, 1)
+            x = torch.clamp(x, 0, 3)
             if self.debug: print(f"  after conv1+relu1: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = self.relu2(self.conv2(x))
-            # x = torch.clamp(x, 0, 1)
+            x = torch.clamp(x, 0, 3)
             if self.debug: print(f"  after conv2+relu2: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = self.relu3(self.conv3(x))
-            # x = torch.clamp(x, 0, 1)
+            x = torch.clamp(x, 0, 3)
             if self.debug: print(f"  after conv3+relu3: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = self.conv4(x)
-            # x = torch.clamp(x, -7, 7)
+            x = torch.clamp(x, -10, 10)
             if self.debug: print(f"  after conv4 (pre-sigmoid): min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
             x = x.view(x.size(0), -1)
             x = torch.sigmoid(x)
@@ -162,11 +181,11 @@ class MosquitoDenoiseCNN(nn.Module):
 
         else:
             x = self.relu1(self.bn1(self.conv1(x)))
-            x = torch.clamp(x, 0, 1)
+            x = torch.clamp(x, 0, 3)
             x = self.relu2(self.bn2(self.conv2(x)))
-            x = torch.clamp(x, 0, 1)
+            x = torch.clamp(x, 0, 3)
             x = self.relu3(self.bn3(self.conv3(x)))
-            x = torch.clamp(x, 0, 1)
+            x = torch.clamp(x, 0, 3)
             x = self.conv4(x)
             x = x.view(x.size(0), -1)
             x = torch.sigmoid(x)
@@ -198,35 +217,35 @@ def train(gs, cost_down=True, epochs=20):
     torch.backends.cudnn.benchmark = False
     DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
-    txt_file = "grid_16_dataset_paths.txt"
-    data_dirs = load_data_dirs(txt_file)
+
     dm_datasets = []
     not_dm_datasets = []
 
-    for data_dir in data_dirs:
-        dm_csv_path = os.path.join(data_dir, "grid_16_dm_9x9.csv")
-        if os.path.exists(dm_csv_path):
-            dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
+    if gs == 8:
+        print("GS 8 TRAIN:")
+        txt_file = "grid_8_dataset_paths.txt"
+        data_dirs = load_data_dirs(txt_file)
+        for data_dir in data_dirs:
+            dm_csv_path = os.path.join(data_dir, "grid_8_dm_9x9.csv")
+            if os.path.exists(dm_csv_path):
+                dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
 
-        not_dm_csv_path = os.path.join(data_dir, "grid_16_not_dm_9x9.csv")
-        if os.path.exists(not_dm_csv_path):
-            not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
-    # if gs == 8:
-    #     print("GS 8 TRAIN:")
-    #     dm_datasets = [
-    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_dm_9x9.csv"), label=1, gs=gs),
-    #     ]
-    #     not_dm_datasets = [
-    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_8_not_dm_9x9.csv"), label=0, gs=gs),
-    #     ]
-    # else:
-    #     print("GS 16 TRAIN:")
-    #     dm_datasets = [
-    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_dm_9x9.csv"), label=1, gs=gs),
-    #     ]
-    #     not_dm_datasets = [
-    #         MosquitoPatchDataset(os.path.join(DATA_DIR, "grid_16_not_dm_9x9.csv"), label=0, gs=gs),
-    #     ]
+            not_dm_csv_path = os.path.join(data_dir, "grid_8_not_dm_9x9.csv")
+            if os.path.exists(not_dm_csv_path):
+                not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
+
+    else:
+        print("GS 16 TRAIN:")
+        txt_file = "grid_16_dataset_paths.txt"
+        data_dirs = load_data_dirs(txt_file)
+        for data_dir in data_dirs:
+            dm_csv_path = os.path.join(data_dir, "grid_16_dm_9x9.csv")
+            if os.path.exists(dm_csv_path):
+                dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
+
+            not_dm_csv_path = os.path.join(data_dir, "grid_16_not_dm_9x9.csv")
+            if os.path.exists(not_dm_csv_path):
+                not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
 
     dm_dataset = ConcatDataset(dm_datasets)
     not_dm_dataset = ConcatDataset(not_dm_datasets)
@@ -365,5 +384,5 @@ def train(gs, cost_down=True, epochs=20):
 
 
 if __name__ == "__main__":
-    train(gs=8, cost_down=True)
-    train(gs=16, cost_down=True)
+    train(gs=8, cost_down=True, epochs=20)
+    # train(gs=16, cost_down=True, epochs=200)
