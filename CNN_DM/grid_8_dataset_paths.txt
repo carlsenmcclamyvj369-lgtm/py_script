@@ -282,3 +282,12 @@
 ./MNR_Label_GS8_20260727_2007/tcl_576p_img#out1#mnr_input0009
 ./MNR_Label_GS8_20260727_2007/The_World_Heritage_Kyoto#out1#mnr_input0024
 ./MNR_Label_GS8_20260727_2007/Tribes_and_Empires#out1#mnr_input0200
+./MNR_Label_GS8_20260727_2007/00009_0620_3
+./MNR_Label_GS8_20260727_2007/00009_0620_5
+./MNR_Label_GS8_20260727_2007/05.02.24_frame0103
+./MNR_Label_GS8_20260727_2007/05.02.25_frame0615
+./MNR_Label_GS8_20260727_2007/5.2.74.KPIX_YandRestless_frame0058
+./MNR_Label_GS8_20260727_2007/DI_049-OnlineNews_frame0199
+./MNR_Label_GS8_20260727_2007/MNR_002-Mosquito_frame0199
+./MNR_Label_GS8_20260727_2007/hisense1_0619_2
+./MNR_Label_GS8_20260727_2007/lec_480i_mpeg_mosquito_frame0199

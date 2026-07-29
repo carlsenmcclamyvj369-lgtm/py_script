@@ -349,6 +349,11 @@ def run_preset(preset, test_dir=None):
 
     if preset.is_qat:
         model = torch.load(preset.model_path, map_location=device)
+        # model = torch.load(
+        #     preset.model_path,
+        #     map_location=device,
+        #     weights_only=False
+        # )
     else:
         model = MosquitoDenoiseCNN(cost_down=preset.cost_down).to(device)
         model.load_state_dict(torch.load(preset.model_path, map_location=device), strict=False)

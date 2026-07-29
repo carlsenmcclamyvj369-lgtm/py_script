@@ -27,7 +27,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 GS = 8
 COST_DOWN = True
 
-def model_train():
+def model_train(model=None, device=None, epochs=10):
     COST_DOWN = True
     SEED = 42
     random.seed(SEED)
