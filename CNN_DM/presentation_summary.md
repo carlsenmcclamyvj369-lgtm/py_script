@@ -21,7 +21,9 @@
 | 方差 | mean_var / low_var_count / high_var_count | block 内亮度方差分布，区分平坦/纹理/噪声区域 |
 | 边缘 | edge_strength / edge_orientation_conf | 水平和垂直边缘强度及方向一致性 |
 | 二阶差分 | second_diff_max / second_diff_min_max | 像素突变强度，反映蚊式噪声的典型高频特性 |
-| 振铃 (Ringing) | ringing_mean_max/min/min_max, row/col_ringing_max/mean | 振铃效应的 6 维描述，mosquito noise 核心特征 |
+| 振铃 (Ringing) | ringing_mean_max / min / min_max | 振铃效应的 7 维描述，mosquito noise 核心特征 |
+| | row_ringing_max / mean | |
+| | col_ringing_max / mean | |
 | 行/列差分 | row_diff_max / col_diff_max | block 边界处的亮度跳变 |
 
 - **网络架构：** 4 层全卷积网络，输入 16 通道 9x9 patch，输出 DM 概率

@@ -77,7 +77,8 @@ PRESETS = {
 }
 
 SCRIPT_DIR = os.path.dirname(__file__)
-TEST_DIR = os.path.join(SCRIPT_DIR, "test_data")
+# TEST_DIR = os.path.join(SCRIPT_DIR, "test_data")
+TEST_DIR = os.path.join(SCRIPT_DIR, "SR_Data\\x2_test")
 LOW_VAR_TH = 20
 HIGH_VAR_TH = 128
 
@@ -252,8 +253,10 @@ def grid_print(grid):
 
 
 @torch.no_grad()
-def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True):
-    """Run CNN on a BMP, save overlay. sub_dir 保留输入子目录结构。"""
+def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, observe_points=None):
+    """Run CNN on a BMP, save overlay. sub_dir 保留输入子目录结构。
+    observe_points: [(x, y), ...] 列表，打印这些像素的融合细节用于调试。
+    """
     out_dir = os.path.join(preset.output_dir, sub_dir)
 
     bgr = cv2.imread(bmp_path, cv2.IMREAD_COLOR)
@@ -276,8 +279,12 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True):
     t0 = time.time()
 
     grid_pad = np.pad(grid, ((4, 4), (4, 4), (0, 0)), mode='edge')
+    print(grid_pad.shape)
     grid_norm = np.clip(grid_pad / 255, 0, 1)
+    print(grid_pad.shape)
+
     X = np.ascontiguousarray(grid_norm).reshape(1, (8 + gh), (8 + gw), 16).transpose(0, 3, 1, 2)
+    print("X",X.shape)
 
     pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
     if len(X) > 0:
@@ -331,6 +338,24 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True):
         cv2.imwrite(os.path.join(out_dir, stem + "_cnn.bmp"), display)
         cv2.imwrite(os.path.join(out_dir, stem + "_in.bmp"), bgr)
         cv2.imwrite(os.path.join(out_dir, stem + "_pred8x8.bmp"), (pred_map_3c * 255).astype(np.uint8))
+        np.save(os.path.join(out_dir, stem + "_pred_raw.npy"), pred_map)  # float32，调试用
+
+    # ─── 调试: 观察指定像素的融合细节 ───
+    if observe_points:
+        print(f"  ── Observe Points ──")
+        print(f"  {'x':>4} {'y':>4} {'ch':>2} {'orig':>5} {'filt':>5} {'pred':>10} {'out_f32':>12} {'out_u8':>5} {'diff':>4}")
+        for ox, oy in observe_points:
+            if oy >= H or ox >= W:
+                continue
+            p = pred_map_repeat[oy, ox]
+            for ci, ch in enumerate(['B', 'G', 'R']):
+                orig = int(bgr[oy, ox, ci])
+                filt = int(filtered_img[oy, ox, ci])
+                out_f = filt * p + orig * (1 - p)
+                out_u = np.clip(out_f, 0, 255).astype(np.uint8)
+                d = out_u - orig
+                print(f"  {ox:4d} {oy:4d}  {ch}  {orig:5d} {filt:5d} {p:10.6f} {out_f:12.8f} {out_u:5d} {d:+4d}")
+        print(f"  ────────────────────")
 
     out_path = os.path.join(out_dir, stem + "_out.bmp")
     os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
@@ -338,8 +363,10 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True):
     print(f"  Denoised: {out_path}")
 
 
-def run_preset(preset, test_dir=None):
-    """加载模型并跑完所有 test 图片。test_dir 可覆盖默认数据集目录。"""
+def run_preset(preset, test_dir=None, observe_points=None):
+    """加载模型并跑完所有 test 图片。test_dir 可覆盖默认数据集目录。
+    observe_points: [(x, y), ...] 调试用，观察指定像素的融合细节。
+    """
     if test_dir is None:
         test_dir = TEST_DIR
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -377,7 +404,7 @@ def run_preset(preset, test_dir=None):
         rel = os.path.join(sub_dir, os.path.basename(bmp_path)) if sub_dir != '.' else os.path.basename(bmp_path)
         print(f"  [{rel}]")
         sub = sub_dir if sub_dir != '.' else ''
-        predict_image(model, device, bmp_path, preset, sub_dir=sub)
+        predict_image(model, device, bmp_path, preset, sub_dir=sub, observe_points=observe_points)
         print(f"  [{time.time() - t0:.0f}s]\n")
 
 
@@ -385,6 +412,9 @@ def main(test_dir=None):
     """跑所有 preset。test_dir 可覆盖默认数据集目录。"""
     for name in sorted(PRESETS):
         run_preset(PRESETS[name], test_dir=test_dir)
+
+        # run_preset(PRESETS["fp32_gs8"], test_dir="./SR_Data/x2_test",
+        #        observe_points=[(632, 918)])
 
 
 if __name__ == "__main__":
