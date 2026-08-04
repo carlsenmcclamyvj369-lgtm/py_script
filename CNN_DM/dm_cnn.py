@@ -256,9 +256,18 @@ def train(gs, cost_down=True, epochs=20):
     dm_dataset = ConcatDataset(dm_datasets)
     not_dm_dataset = ConcatDataset(not_dm_datasets)
 
-    val_ratio = 0.2
     dm_size = len(dm_dataset)
     not_dm_size = len(not_dm_dataset)
+    total_size = dm_size + not_dm_size
+    print("=" * 60)
+    print(f"数据统计 (GS={gs}):")
+    print(f"  DM patches:     {dm_size:>10,}  ({100 * dm_size / total_size:.1f}%)")
+    print(f"  Not-DM patches: {not_dm_size:>10,}  ({100 * not_dm_size / total_size:.1f}%)")
+    print(f"  总 patches:     {total_size:>10,}")
+    print(f"  DM:Not-DM = 1:{not_dm_size / max(dm_size, 1):.2f}")
+    print("=" * 60)
+
+    val_ratio = 0.2
 
     dm_val = int(dm_size * val_ratio)
     not_dm_val = int(not_dm_size * val_ratio)
@@ -384,6 +393,6 @@ def train(gs, cost_down=True, epochs=20):
 
 
 if __name__ == "__main__":
-    # train(gs=8, cost_down=True, epochs=20)
-    train(gs=8, cost_down=False, epochs=20)
+    train(gs=8, cost_down=True, epochs=20)
+    # train(gs=8, cost_down=False, epochs=20)
     # train(gs=16, cost_down=True, epochs=200)
