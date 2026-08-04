@@ -71,7 +71,8 @@ class Preset:
 
 PRESETS = {
     "fp32_gs8":  Preset(name="fp32_gs8",  gs=8,  cost_down=True, is_qat=False),
-    "fp32_gs16": Preset(name="fp32_gs16", gs=16, cost_down=True, is_qat=False),
+    "fp32_full_gs8":  Preset(name="fp32_full_gs8",  gs=8,  cost_down=False, is_qat=False),
+    # "fp32_gs16": Preset(name="fp32_gs16", gs=16, cost_down=True, is_qat=False),
     # "qat_gs8":   Preset(name="qat_gs8",   gs=8,  cost_down=True, is_qat=True),
     # "qat_gs16":  Preset(name="qat_gs16",  gs=16, cost_down=True, is_qat=True),
 }
@@ -338,7 +339,7 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, 
         cv2.imwrite(os.path.join(out_dir, stem + "_cnn.bmp"), display)
         cv2.imwrite(os.path.join(out_dir, stem + "_in.bmp"), bgr)
         cv2.imwrite(os.path.join(out_dir, stem + "_pred8x8.bmp"), (pred_map_3c * 255).astype(np.uint8))
-        np.save(os.path.join(out_dir, stem + "_pred_raw.npy"), pred_map)  # float32，调试用
+        # np.save(os.path.join(out_dir, stem + "_pred_raw.npy"), pred_map)  # float32，调试用
 
     # ─── 调试: 观察指定像素的融合细节 ───
     if observe_points:
@@ -394,7 +395,7 @@ def run_preset(preset, test_dir=None, observe_points=None):
     bmps = []
     for root, dirs, files in os.walk(test_dir):
         for f in files:
-            if f.lower().endswith('.bmp'):
+            if f.lower().endswith(('.bmp', '.png', '.jpg')):
                 bmps.append((os.path.join(root, f), os.path.relpath(root, test_dir)))
 
     bmps.sort(key=lambda x: x[0])
@@ -418,5 +419,7 @@ def main(test_dir=None):
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    # main("C:\code\py\denoise\scripts\CNN_DM\ICDAR_2019_OCRDataset\TrainImages")
+    main("C:\code\py\denoise\scripts\CNN_DM\\val_data")
     # main(test_dir='SR_Data')

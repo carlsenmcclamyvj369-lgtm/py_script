@@ -84,6 +84,9 @@ def normalize_features(df, features_list, gs=8):
     x = df[features_list].copy()
     for feat in features_list:
         x[feat] = np.clip(x[feat].astype(np.float32), 0, 255) / 255
+    if x.isna().any().any():
+        nan_cols = [c for c in features_list if x[c].isna().any()]
+        raise ValueError(f"CSV contains NaN in columns: {nan_cols}")
     return x.values.astype(np.float32)
 
 
@@ -147,9 +150,11 @@ class MosquitoDenoiseCNN(nn.Module):
             self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=0)
             self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=0)
             self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
-            self.bn1 = nn.BatchNorm2d(32)
-            self.bn2 = nn.BatchNorm2d(64)
-            self.bn3 = nn.BatchNorm2d(16)
+            # self.bn1 = nn.BatchNorm2d(32)
+            # self.bn2 = nn.BatchNorm2d(64)
+            # self.bn3 = nn.BatchNorm2d(16)
+            self._init_weights()
+
         self.relu1 = nn.ReLU()
         self.relu2 = nn.ReLU()
         self.relu3 = nn.ReLU()
@@ -180,13 +185,14 @@ class MosquitoDenoiseCNN(nn.Module):
             if self.debug: print(f"  after sigmoid: min={x.min().item():.4f} max={x.max().item():.4f} mean={x.mean().item():.4f}")
 
         else:
-            x = self.relu1(self.bn1(self.conv1(x)))
+            x = self.relu1(self.conv1(x))
             x = torch.clamp(x, 0, 3)
-            x = self.relu2(self.bn2(self.conv2(x)))
+            x = self.relu2(self.conv2(x))
             x = torch.clamp(x, 0, 3)
-            x = self.relu3(self.bn3(self.conv3(x)))
+            x = self.relu3(self.conv3(x))
             x = torch.clamp(x, 0, 3)
             x = self.conv4(x)
+            x = torch.clamp(x, -10, 10)
             x = x.view(x.size(0), -1)
             x = torch.sigmoid(x)
         return x
@@ -282,18 +288,12 @@ def train(gs, cost_down=True, epochs=20):
 
     model = MosquitoDenoiseCNN(cost_down=cost_down).to(device)
 
-    if cost_down:
-        optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
-        max_grad_norm = 1.0
-        label_smoothing = 0.05
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-5
-        )
-    else:
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-        max_grad_norm = None
-        label_smoothing = 0.0
-        scheduler = None
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
+    max_grad_norm = 1.0
+    label_smoothing = 0.05
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-5
+    )
     criterion = nn.BCELoss()
 
     best_f1 = 0.0
@@ -384,5 +384,6 @@ def train(gs, cost_down=True, epochs=20):
 
 
 if __name__ == "__main__":
-    train(gs=8, cost_down=True, epochs=20)
+    # train(gs=8, cost_down=True, epochs=20)
+    train(gs=8, cost_down=False, epochs=20)
     # train(gs=16, cost_down=True, epochs=200)
