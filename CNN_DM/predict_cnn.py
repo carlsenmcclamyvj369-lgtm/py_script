@@ -37,12 +37,16 @@ import feature_compute_reference as fcr
 # ─── Preset: 一行一个实验配置 ───
 class Preset:
     """推理配置预设。model_path / output_dir 自动生成。"""
-    def __init__(self, name, gs, cost_down=True, is_qat=False, dm_th=0.5, output_dir=None):
+    def __init__(self, name, gs, cost_down=True, is_qat=False, dm_th=0.5, output_dir=None,
+                 window_size=9, model_dir="model", model_file=None):
         self.name = name
         self.gs = gs
         self.cost_down = cost_down
         self.is_qat = is_qat
         self.dm_th = dm_th
+        self.window_size = window_size
+        self.model_dir = model_dir
+        self.model_file = model_file
         self._output_dir = output_dir
 
     @property
@@ -54,9 +58,16 @@ class Preset:
     @property
     def model_path(self):
         SCRIPT_DIR = os.path.dirname(__file__)
+        if self.model_file is not None:
+            return os.path.join(SCRIPT_DIR, self.model_dir, self.model_file)
         if self.is_qat:
-            return os.path.join(SCRIPT_DIR, "model", f"mosquito_denoise_cnn_qat_grid_{self.gs}.pth")
-        return os.path.join(SCRIPT_DIR, "model", f"mosquito_denoise_cnn{self.suffix}_grid_{self.gs}.pth")
+            return os.path.join(SCRIPT_DIR, self.model_dir, f"mosquito_denoise_cnn_qat_grid_{self.gs}.pth")
+        return os.path.join(SCRIPT_DIR, self.model_dir, f"mosquito_denoise_cnn{self.suffix}_grid_{self.gs}.pth")
+
+    @property
+    def pad(self):
+        """CNN 每边 padding: 窗口 w 对应 (w-1)/2"""
+        return (self.window_size - 1) // 2
 
     @property
     def output_dir(self):
@@ -70,16 +81,32 @@ class Preset:
 
 
 PRESETS = {
-    "fp32_gs8":  Preset(name="fp32_gs8",  gs=8,  cost_down=True, is_qat=False),
-    "fp32_full_gs8":  Preset(name="fp32_full_gs8",  gs=8,  cost_down=False, is_qat=False),
+    # "fp32_gs8":  Preset(name="fp32_gs8",  gs=8,  cost_down=True, is_qat=False),
+    # "fp32_full_gs8":  Preset(name="fp32_full_gs8",  gs=8,  cost_down=False, is_qat=False),
+    # 窗口消融推理模型 (model_window/)
+    # "win_1x1": Preset(name="win_1x1", gs=8, cost_down=True, is_qat=False,
+    #                   window_size=1, model_dir="model_window",
+    #                   model_file="model_window_1x1.pth"),
+    # "win_3x3": Preset(name="win_3x3", gs=8, cost_down=True, is_qat=False,
+    #                   window_size=3, model_dir="model_window",
+    #                   model_file="model_window_3x3.pth"),
+    "win_5x5": Preset(name="win_5x5", gs=8, cost_down=True, is_qat=False,
+                      window_size=5, model_dir="model_window",
+                      model_file="model_window_5x5.pth"),
+    "win_7x7": Preset(name="win_7x7", gs=8, cost_down=True, is_qat=False,
+                      window_size=7, model_dir="model_window",
+                      model_file="model_window_7x7.pth"),
+    "win_9x9": Preset(name="win_9x9", gs=8, cost_down=True, is_qat=False,
+                      window_size=9, model_dir="model_window",
+                      model_file="model_window_9x9.pth"),
     # "fp32_gs16": Preset(name="fp32_gs16", gs=16, cost_down=True, is_qat=False),
     # "qat_gs8":   Preset(name="qat_gs8",   gs=8,  cost_down=True, is_qat=True),
     # "qat_gs16":  Preset(name="qat_gs16",  gs=16, cost_down=True, is_qat=True),
 }
 
 SCRIPT_DIR = os.path.dirname(__file__)
-# TEST_DIR = os.path.join(SCRIPT_DIR, "test_data")
-TEST_DIR = os.path.join(SCRIPT_DIR, "SR_Data\\x2_test")
+TEST_DIR = os.path.join(SCRIPT_DIR, "test_data")
+# TEST_DIR = os.path.join(SCRIPT_DIR, "SR_Data\\x2_test")
 LOW_VAR_TH = 20
 HIGH_VAR_TH = 128
 
@@ -260,10 +287,11 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, 
     """
     out_dir = os.path.join(preset.output_dir, sub_dir)
 
+    t_start = time.time()
     bgr = cv2.imread(bmp_path, cv2.IMREAD_COLOR)
     if bgr is None:
         print(f"ERROR: cannot read {bmp_path}")
-        return
+        return None
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     y_full = fcr.compute_y_from_rgb(rgb)
     H, W = y_full.shape
@@ -279,13 +307,11 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, 
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
     t0 = time.time()
 
-    grid_pad = np.pad(grid, ((4, 4), (4, 4), (0, 0)), mode='edge')
-    print(grid_pad.shape)
+    pad = preset.pad  # 窗口 w → 每边 pad (w-1)/2
+    grid_pad = np.pad(grid, ((pad, pad), (pad, pad), (0, 0)), mode='edge')
     grid_norm = np.clip(grid_pad / 255, 0, 1)
-    print(grid_pad.shape)
 
-    X = np.ascontiguousarray(grid_norm).reshape(1, (8 + gh), (8 + gw), 16).transpose(0, 3, 1, 2)
-    print("X",X.shape)
+    X = np.ascontiguousarray(grid_norm).reshape(1, (pad * 2 + gh), (pad * 2 + gw), 16).transpose(0, 3, 1, 2)
 
     pred_map = np.full((gh, gw), np.nan, dtype=np.float32)
     if len(X) > 0:
@@ -363,10 +389,14 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, 
     cv2.imwrite(str(out_path), out_img)
     print(f"  Denoised: {out_path}")
 
+    return dict(stem=stem, dm_count=dm_count, valid_count=valid_count,
+                elapsed=time.time() - t_start)
+
 
 def run_preset(preset, test_dir=None, observe_points=None):
     """加载模型并跑完所有 test 图片。test_dir 可覆盖默认数据集目录。
     observe_points: [(x, y), ...] 调试用，观察指定像素的融合细节。
+    返回 [(stem, dm_count, valid_count, elapsed), ...] 供报告使用。
     """
     if test_dir is None:
         test_dir = TEST_DIR
@@ -383,7 +413,7 @@ def run_preset(preset, test_dir=None, observe_points=None):
         #     weights_only=False
         # )
     else:
-        model = MosquitoDenoiseCNN(cost_down=preset.cost_down).to(device)
+        model = MosquitoDenoiseCNN(cost_down=preset.cost_down, window_size=preset.window_size).to(device)
         model.load_state_dict(torch.load(preset.model_path, map_location=device), strict=False)
     model.eval()
     print(f"  Model: {preset.model_path}")
@@ -400,26 +430,118 @@ def run_preset(preset, test_dir=None, observe_points=None):
 
     bmps.sort(key=lambda x: x[0])
     print(f"  Processing {len(bmps)} images from {test_dir}...\n")
+    results = []
     for bmp_path, sub_dir in bmps:
         t0 = time.time()
         rel = os.path.join(sub_dir, os.path.basename(bmp_path)) if sub_dir != '.' else os.path.basename(bmp_path)
         print(f"  [{rel}]")
         sub = sub_dir if sub_dir != '.' else ''
-        predict_image(model, device, bmp_path, preset, sub_dir=sub, observe_points=observe_points)
+        stats = predict_image(model, device, bmp_path, preset, sub_dir=sub, observe_points=observe_points)
         print(f"  [{time.time() - t0:.0f}s]\n")
+        if stats is not None:
+            results.append(stats)
+    return results
+
+
+def write_report(test_dir, all_results):
+    """生成/追加推理报告 inference_report_{testdir}.md。
+    每次运行追加一个 Run 章节, 同一测试目录的多轮 main() 结果合并到同一文件。"""
+    import datetime
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    run_presets = ', '.join(sorted(all_results))
+    lines = []
+    lines.append(f"## Run {now}  [{run_presets}]")
+    lines.append("")
+    lines.append(f"- **测试目录**: `{test_dir}`")
+    lines.append("")
+
+    # Preset 汇总
+    lines.append("### Preset 汇总")
+    lines.append("")
+    lines.append("| Preset | 图片数 | 总 Block | DM Block | DM% | 平均耗时(s) |")
+    lines.append("|--------|--------|----------|----------|-----|-------------|")
+    for name in sorted(all_results):
+        rows = all_results[name]
+        total_block = sum(r['valid_count'] for r in rows)
+        dm_block = sum(r['dm_count'] for r in rows)
+        avg_t = sum(r['elapsed'] for r in rows) / max(len(rows), 1)
+        dm_pct = 100 * dm_block / max(total_block, 1)
+        lines.append(f"| {name} | {len(rows)} | {total_block} | {dm_block} | {dm_pct:.2f}% | {avg_t:.1f} |")
+    lines.append("")
+
+    # 逐图对比 (按第一个 preset 的图片顺序)
+    lines.append("### 逐图 DM 检测对比")
+    lines.append("")
+    presets = sorted(all_results)
+    header = "| 图片 | " + " | ".join(presets) + " |"
+    sep = "|------|" + "------|" * len(presets)
+    lines.append(header)
+    lines.append(sep)
+    # 图片列表取第一个有结果的 preset 顺序, 并补充其他 preset 独有的图片
+    image_order = []
+    for name in presets:
+        for r in all_results[name]:
+            if r['stem'] not in image_order:
+                image_order.append(r['stem'])
+    for stem in image_order:
+        cells = []
+        for name in presets:
+            found = [r for r in all_results[name] if r['stem'] == stem]
+            if found:
+                r = found[0]
+                pct = 100 * r['dm_count'] / max(r['valid_count'], 1)
+                cells.append(f"{r['dm_count']} ({pct:.1f}%)")
+            else:
+                cells.append("-")
+        lines.append(f"| {stem} | " + " | ".join(cells) + " |")
+    lines.append("")
+
+    # 相对最大窗口的差异 (仅当存在多个窗口 preset 时)
+    max_win = max(presets, key=lambda n: PRESETS[n].window_size if n in PRESETS else 0)
+    if len(presets) > 1:
+        lines.append(f"### 各 Preset 相对 {max_win} 的 DM 数差异")
+        lines.append("")
+        header = "| 图片 | " + " | ".join(presets) + " |"
+        sep = "|------|" + "------|" * len(presets)
+        lines.append(header)
+        lines.append(sep)
+        base_map = {r['stem']: r['dm_count'] for r in all_results[max_win]}
+        for stem in image_order:
+            base = base_map.get(stem)
+            cells = []
+            for name in presets:
+                found = [r for r in all_results[name] if r['stem'] == stem]
+                if found and base is not None:
+                    cells.append(f"{found[0]['dm_count'] - base:+d}")
+                else:
+                    cells.append("-")
+            lines.append(f"| {stem} | " + " | ".join(cells) + " |")
+        lines.append("")
+
+    report_path = os.path.join(SCRIPT_DIR, f"inference_report_{Path(test_dir).name}.md")
+    is_new = not os.path.exists(report_path)
+    with open(report_path, "a", encoding="utf-8") as f:
+        if is_new:
+            f.write(f"# CNN-DM 推理报告 ({Path(test_dir).name})\n\n")
+        f.write("\n".join(lines) + "\n\n")
+    print(f"\n报告已生成: {report_path}")
 
 
 def main(test_dir=None):
     """跑所有 preset。test_dir 可覆盖默认数据集目录。"""
+    if test_dir is None:
+        test_dir = TEST_DIR
+    all_results = {}
     for name in sorted(PRESETS):
-        run_preset(PRESETS[name], test_dir=test_dir)
+        all_results[name] = run_preset(PRESETS[name], test_dir=test_dir)
+    write_report(test_dir, all_results)
 
         # run_preset(PRESETS["fp32_gs8"], test_dir="./SR_Data/x2_test",
         #        observe_points=[(632, 918)])
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     # main("C:\code\py\denoise\scripts\CNN_DM\ICDAR_2019_OCRDataset\TrainImages")
-    main("C:\code\py\denoise\scripts\CNN_DM\\val_data")
     # main(test_dir='SR_Data')
+    main(test_dir=os.path.join(SCRIPT_DIR, "val_data"))
