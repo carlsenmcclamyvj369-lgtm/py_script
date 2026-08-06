@@ -37,6 +37,8 @@ EPOCHS_BASELINE = 400   # Phase A 训练轮数
 EPOCHS_ABLATION = 20    # Phase B 消融: warm-start 微调轮数 (对比方向即可)
 MAX_ABLATE = 15         # Phase B 最多消融多少个目录 (按可疑度排序)
 F1_SUSPECT_TH = 0.50    # 目录验证 F1 低于此值 → 判定可疑
+MIN_VAL_SAMPLES = 30    # 目录验证集样本数低于此值 → 小样本, F1 不可靠
+MIN_CLASS_SAMPLES = 10  # DM/not-DM 任一类少于该值 → 类别不平衡, F1 不可靠
 BATCH_SIZE = 128
 USE_AMP = True          # 混合精度加速 (CUDA 下 ~1.5-2x)
 MODEL_SAVE_DIR = os.path.join(os.path.dirname(__file__), "model_ablation")
@@ -107,8 +109,8 @@ def train_model(model, train_loader, epochs, tag="", lr=3e-4, warm_start=False):
             x, y = x.to(device), y.to(device)
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=USE_AMP and device.type == "cuda"):
                 pred = model(x)
-            # BCELoss 不能在 autocast 里计算, 移出 autocast 块
-            loss = criterion(pred, y * 0.95 + 0.025)  # label smoothing
+            # BCELoss 不能在 autocast 里计算, 移出 autocast 块; pred 需转回 fp32
+            loss = criterion(pred.float(), y * 0.95 + 0.025)  # label smoothing
             optimizer.zero_grad()
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
@@ -164,7 +166,8 @@ def run_baseline(full_dataset, dir_id, train_idx, val_idx, val_dir_map, dir_name
     print(f"\nBaseline 全局验证集 (val={len(val_idx)}): F1={g_f1:.4f} Prec={g_prec:.4f} "
           f"Rec={g_rec:.4f} Acc={g_acc:.4f}")
 
-    # 按目录验证 F1
+    # 按目录验证 F1 (跳过无 DM 样本的目录: 无正样本无法评估 DM 检测)
+    skipped = 0
     print(f"\n{'目录':<45} {'val数':>7} {'dm':>5} {'F1':>7} {'Prec':>7} {'Rec':>7} {'FP':>5} {'判据':>8}")
     print("-" * 95)
     rows = []
@@ -176,16 +179,25 @@ def run_baseline(full_dataset, dir_id, train_idx, val_idx, val_dir_map, dir_name
         f1, prec, rec, acc, tp, tn, fp, fn = metrics(preds, labels)
         n_dm = int(np.sum(labels == 1))
         if n_dm == 0:
-            # 无 DM 正样本: F1 无意义, 用 FP 率评估 (not-DM 被误判成 DM 的比例)
-            fp_rate = fp / max(tn + fp, 1)
-            flag = "无DM样本" if fp_rate <= 0.1 else f"无DM+FP高({fp_rate:.0%})"
-            flag = flag if fp_rate <= 0.1 else f"无DM,FP={fp}/{tn+fp}"
-            rows.append((i, name, len(v_idx), 0, float('nan'), float('nan'), float('nan'), fp, flag))
-            print(f"{name:<45} {len(v_idx):>7} {n_dm:>5} {'-':>7} {'-':>7} {'-':>7} {fp:>5} {flag:>8}")
+            skipped += 1  # 无 DM 样本, 跳过
+            continue
+        n_val = len(v_idx)
+        n_notdm = n_val - n_dm
+        if n_notdm == 0:
+            skipped += 1  # 只有 DM 样本: 全预测 DM 也能得 F1=1, 指标无意义
+            continue
+        if n_val < MIN_VAL_SAMPLES:
+            flag = f"小样本({n_val})"  # 样本太少, F1 不可靠
+        elif min(n_dm, n_notdm) < MIN_CLASS_SAMPLES:
+            flag = f"类别不平衡({n_dm}/{n_notdm})"  # 单类样本太少, F1 不可靠
+        elif f1 < F1_SUSPECT_TH:
+            flag = "可疑"
         else:
-            flag = "可疑" if f1 < F1_SUSPECT_TH else ""
-            rows.append((i, name, len(v_idx), n_dm, f1, prec, rec, fp, flag))
-            print(f"{name:<45} {len(v_idx):>7} {n_dm:>5} {f1:>7.3f} {prec:>7.3f} {rec:>7.3f} {fp:>5} {flag:>8}")
+            flag = ""
+        rows.append((i, name, n_val, n_dm, f1, prec, rec, fp, flag))
+        print(f"{name:<45} {n_val:>7} {n_dm:>5} {f1:>7.3f} {prec:>7.3f} {rec:>7.3f} {fp:>5} {flag:>8}")
+
+    print(f"\n(跳过 {skipped} 个单类样本目录: 无 DM 或全是 DM, 指标无意义)")
 
     # Phase A 结果落盘, 挂了也能复用
     import csv
@@ -193,10 +205,7 @@ def run_baseline(full_dataset, dir_id, train_idx, val_idx, val_dir_map, dir_name
         w = csv.writer(f)
         w.writerow(["dir", "val_count", "n_dm", "f1", "prec", "rec", "fp", "flag"])
         for r in rows:
-            f1s = "-" if np.isnan(r[4]) else f"{r[4]:.4f}"
-            precs = "-" if np.isnan(r[5]) else f"{r[5]:.4f}"
-            recs = "-" if np.isnan(r[6]) else f"{r[6]:.4f}"
-            w.writerow([r[1], r[2], r[3], f1s, precs, recs, r[7], r[8]])
+            w.writerow([r[1], r[2], r[3], f"{r[4]:.4f}", f"{r[5]:.4f}", f"{r[6]:.4f}", r[7], r[8]])
     print(f"Phase A 结果已保存: {os.path.join(MODEL_SAVE_DIR, 'phaseA_dir_f1.csv')}")
 
     return model, g_f1, rows
@@ -208,9 +217,12 @@ def run_ablation(full_dataset, dir_id, train_idx, val_idx, val_dir_map, dir_name
     result_csv = os.path.join(MODEL_SAVE_DIR, "phaseB_ablation.csv")
 
     # 按可疑度排序: 先低 F1, 再小样本 (row: i, name, val_count, n_dm, f1, prec, rec, fp, flag)
-    # 无 DM 样本的目录 F1 无意义, 不参与消融
-    with_dm = [r for r in rows if r[3] > 0 and not np.isnan(r[4])]
-    suspicious = sorted(with_dm, key=lambda r: (r[4], r[2]))
+    # 无 DM / 小样本 / 类别不平衡目录的 F1 不可靠, 不参与消融
+    reliable = [r for r in rows
+                if r[3] > 0 and not np.isnan(r[4])
+                and r[2] >= MIN_VAL_SAMPLES
+                and min(r[3], r[2] - r[3]) >= MIN_CLASS_SAMPLES]
+    suspicious = sorted(reliable, key=lambda r: (r[4], r[2]))
     ablate_list = [r for r in suspicious if r[4] < F1_SUSPECT_TH][:MAX_ABLATE]
     if not ablate_list:
         ablate_list = suspicious[:MAX_ABLATE]
@@ -296,13 +308,12 @@ def write_report(rows, results, g_f1):
 
     lines.append("## Phase A: 按目录验证 F1 (Baseline 模型)")
     lines.append("")
+    lines.append("> 仅统计含 DM 样本的目录 (无 DM 正样本的目录已跳过)")
+    lines.append("")
     lines.append("| 目录 | val 数 | DM 数 | F1 | Prec | Rec | FP | 判据 |")
     lines.append("|------|--------|-------|-----|------|-----|-----|------|")
-    for r in sorted(rows, key=lambda x: (np.isnan(x[4]), x[4])):
-        if np.isnan(r[4]):
-            lines.append(f"| {r[1]} | {r[2]} | {r[3]} | - | - | - | {r[7]} | {r[8]} |")
-        else:
-            lines.append(f"| {r[1]} | {r[2]} | {r[3]} | {r[4]:.3f} | {r[5]:.3f} | {r[6]:.3f} | {r[7]} | {r[8]} |")
+    for r in sorted(rows, key=lambda x: x[4]):
+        lines.append(f"| {r[1]} | {r[2]} | {r[3]} | {r[4]:.3f} | {r[5]:.3f} | {r[6]:.3f} | {r[7]} | {r[8]} |")
     lines.append("")
 
     lines.append("## Phase B: Leave-one-out 消融")
@@ -354,6 +365,8 @@ def load_phaseA_rows():
             f1 = float(f1s) if f1s != "-" else float('nan')
             prec = float(precs) if precs != "-" else float('nan')
             rec = float(recs) if recs != "-" else float('nan')
+            if np.isnan(f1):
+                continue  # 兼容旧 CSV: 跳过无 DM 样本的行
             rows.append((None, name, int(val_count), int(n_dm), f1, prec, rec, int(fp), flag))
     return rows
 

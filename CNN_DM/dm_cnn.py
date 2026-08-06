@@ -15,6 +15,11 @@ CNN mosquito noise detection — training script.
   train(gs=8,  cost_down=True, epochs=400)
   train(gs=16, cost_down=True, epochs=400)
 
+数据源 (MNR_Label_GS8_20260805_1900) 分源划分:
+  SR_data / JPG_data / DIV2K: 图像级 8:2 划分 (同一图像的整体 Patch 进同一侧)
+  test_data:                   patch 级 8:2 混洗划分
+  Train = 图像源 80% + test_data 80%,  Val = 图像源 20% + test_data 20%
+
 输出: model/mosquito_denoise_cnn_cost_down_grid_{GS}.pth
        model/best_th_cost_down_grid_{GS}.npy
 """
@@ -243,70 +248,106 @@ def train(gs, cost_down=True, epochs=20):
     DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
 
-    dm_datasets = []
-    not_dm_datasets = []
-
-    if gs == 8:
-        print("GS 8 TRAIN:")
-        txt_file = "grid_8_dataset_paths.txt"
-        data_dirs = load_data_dirs(txt_file)
-        for data_dir in data_dirs:
-            dm_csv_path = os.path.join(data_dir, "grid_8_dm_9x9.csv")
-            if os.path.exists(dm_csv_path):
-                dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
-
-            not_dm_csv_path = os.path.join(data_dir, "grid_8_not_dm_9x9.csv")
-            if os.path.exists(not_dm_csv_path):
-                not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
-
-    else:
-        print("GS 16 TRAIN:")
-        txt_file = "grid_16_dataset_paths.txt"
-        data_dirs = load_data_dirs(txt_file)
-        for data_dir in data_dirs:
-            dm_csv_path = os.path.join(data_dir, "grid_16_dm_9x9.csv")
-            if os.path.exists(dm_csv_path):
-                dm_datasets.append(MosquitoPatchDataset(dm_csv_path, label=1))
-
-            not_dm_csv_path = os.path.join(data_dir, "grid_16_not_dm_9x9.csv")
-            if os.path.exists(not_dm_csv_path):
-                not_dm_datasets.append(MosquitoPatchDataset(not_dm_csv_path, label=0))
-
-    dm_dataset = ConcatDataset(dm_datasets)
-    not_dm_dataset = ConcatDataset(not_dm_datasets)
-
-    dm_size = len(dm_dataset)
-    not_dm_size = len(not_dm_dataset)
-    total_size = dm_size + not_dm_size
-    print("=" * 60)
-    print(f"数据统计 (GS={gs}):")
-    print(f"  DM patches:     {dm_size:>10,}  ({100 * dm_size / total_size:.1f}%)")
-    print(f"  Not-DM patches: {not_dm_size:>10,}  ({100 * not_dm_size / total_size:.1f}%)")
-    print(f"  总 patches:     {total_size:>10,}")
-    print(f"  DM:Not-DM = 1:{not_dm_size / max(dm_size, 1):.2f}")
-    print("=" * 60)
-
+    DATA_ROOT = os.path.join(DATA_DIR, "MNR_Label_GS8_20260805_1900")
+    IMAGE_LEVEL_SOURCES = ["SR_data", "JPG_data", "DIV2K"]  # 图像级划分 (8:2)
+    PATCH_LEVEL_SOURCE = "test_data"                        # patch 级划分 (8:2)
     val_ratio = 0.2
 
-    dm_val = int(dm_size * val_ratio)
-    not_dm_val = int(not_dm_size * val_ratio)
+    # ─── 1. 图像级划分: 同一图像(子文件夹)的所有 Patch 整体进入 Train 或 Val ───
+    image_dirs = []  # (source, 图像文件夹路径)
+    for src in IMAGE_LEVEL_SOURCES:
+        src_root = os.path.join(DATA_ROOT, src)
+        if not os.path.isdir(src_root):
+            print(f"WARNING: 数据源不存在, 跳过: {src_root}")
+            continue
+        for name in sorted(os.listdir(src_root)):
+            full = os.path.join(src_root, name)
+            if os.path.isdir(full):
+                image_dirs.append((src, full))
+    np.random.shuffle(image_dirs)
+    n_val_images = int(len(image_dirs) * val_ratio)
+    val_image_dirs = image_dirs[:n_val_images]
+    train_image_dirs = image_dirs[n_val_images:]
 
-    dm_indices = np.arange(dm_size)
-    not_dm_indices = np.arange(not_dm_size)
-    np.random.shuffle(dm_indices)
-    np.random.shuffle(not_dm_indices)
+    def load_image_list(dir_list):
+        """加载图像文件夹列表的 dm / not_dm 数据集"""
+        dm_ds, not_dm_ds = [], []
+        for _, img_dir in dir_list:
+            dm_csv = os.path.join(img_dir, f"grid_{gs}_dm_9x9.csv")
+            if os.path.exists(dm_csv):
+                dm_ds.append(MosquitoPatchDataset(dm_csv, label=1))
+            not_dm_csv = os.path.join(img_dir, f"grid_{gs}_not_dm_9x9.csv")
+            if os.path.exists(not_dm_csv):
+                not_dm_ds.append(MosquitoPatchDataset(not_dm_csv, label=0))
+        return dm_ds, not_dm_ds
 
-    train_idx = list(dm_indices[dm_val:]) + [dm_size + i for i in not_dm_indices[not_dm_val:]]
-    val_idx = list(dm_indices[:dm_val]) + [dm_size + i for i in not_dm_indices[:not_dm_val]]
+    def count_patches(ds_list):
+        return sum(len(d) for d in ds_list)
 
-    full_dataset = ConcatDataset([dm_dataset, not_dm_dataset])
-    train_dataset = Subset(full_dataset, train_idx)
-    val_dataset = Subset(full_dataset, val_idx)
+    train_img_dm, train_img_not_dm = [], []
+    val_img_dm, val_img_not_dm = [], []
+    src_stats = []  # (source, train 文件夹, train patches, val 文件夹, val patches)
+    for src in IMAGE_LEVEL_SOURCES:
+        tr_dirs = [e for e in train_image_dirs if e[0] == src]
+        va_dirs = [e for e in val_image_dirs if e[0] == src]
+        tr_dm, tr_nd = load_image_list(tr_dirs)
+        va_dm, va_nd = load_image_list(va_dirs)
+        train_img_dm += tr_dm
+        train_img_not_dm += tr_nd
+        val_img_dm += va_dm
+        val_img_not_dm += va_nd
+        src_stats.append((src, len(tr_dirs), count_patches(tr_dm) + count_patches(tr_nd),
+                          len(va_dirs), count_patches(va_dm) + count_patches(va_nd)))
+
+    # ─── 2. Patch 级划分: test_data 全部 Patch 混洗后 8:2 ───
+    patch_datasets = []
+    n_patch_dm = 0
+    n_patch_not_dm = 0
+    test_root = os.path.join(DATA_ROOT, PATCH_LEVEL_SOURCE)
+    test_dirs_with_csv = set()
+    for root, _, files in os.walk(test_root):
+        for f in sorted(files):
+            if f == f"grid_{gs}_dm_9x9.csv":
+                ds = MosquitoPatchDataset(os.path.join(root, f), label=1)
+                patch_datasets.append(ds)
+                n_patch_dm += len(ds)
+                test_dirs_with_csv.add(root)
+            elif f == f"grid_{gs}_not_dm_9x9.csv":
+                ds = MosquitoPatchDataset(os.path.join(root, f), label=0)
+                patch_datasets.append(ds)
+                n_patch_not_dm += len(ds)
+                test_dirs_with_csv.add(root)
+
+    test_all = ConcatDataset(patch_datasets)
+    test_idx = np.arange(len(test_all))
+    np.random.shuffle(test_idx)
+    n_val_test = int(len(test_all) * val_ratio)
+    train_patch_ds = Subset(test_all, test_idx[n_val_test:])
+    val_patch_ds = Subset(test_all, test_idx[:n_val_test])
+
+    # ─── 3. 组装 ───
+    train_dataset = ConcatDataset(train_img_dm + train_img_not_dm + [train_patch_ds])
+    val_dataset = ConcatDataset(val_img_dm + val_img_not_dm + [val_patch_ds])
+
+    # ─── 4. 数据源统计 ───
+    dm_size = count_patches(train_img_dm) + count_patches(val_img_dm) + n_patch_dm
+    not_dm_size = count_patches(train_img_not_dm) + count_patches(val_img_not_dm) + n_patch_not_dm
+    print("=" * 72)
+    print(f"数据源划分 (GS={gs}, val_ratio={val_ratio:.0%}):")
+    print(f"{'数据源':<14}{'Train 文件夹':>10}{'Train patches':>14}{'Val 文件夹':>10}{'Val patches':>14}")
+    print("-" * 72)
+    for src, tr_d, tr_p, va_d, va_p in src_stats:
+        print(f"{src:<14}{tr_d:>10,}{tr_p:>14,}{va_d:>10,}{va_p:>14,}")
+    print(f"{PATCH_LEVEL_SOURCE + '*':<14}{'-':>10}{len(train_patch_ds):>14,}{'-':>10}{len(val_patch_ds):>14,}")
+    print("-" * 72)
+    print(f"{'总计':<14}{len(train_image_dirs):>10,}{len(train_dataset):>14,}"
+          f"{len(val_image_dirs):>10,}{len(val_dataset):>14,}")
+    print(f"  * {PATCH_LEVEL_SOURCE}: {len(test_dirs_with_csv)} 个子文件夹, patch 级划分")
+    print(f"  全量 DM patches: {dm_size:,} | Not-DM: {not_dm_size:,} (DM:Not-DM = 1:{not_dm_size / max(dm_size, 1):.2f})")
+    print("=" * 72)
 
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False, num_workers=0)
-
-    print(f"Train: {len(train_dataset)} patches, Val: {len(val_dataset)} patches")
 
     # =========================
     # 6. 训练
@@ -412,6 +453,6 @@ def train(gs, cost_down=True, epochs=20):
 
 
 if __name__ == "__main__":
-    train(gs=8, cost_down=True, epochs=20)
+    train(gs=8, cost_down=True, epochs=400)
     # train(gs=8, cost_down=False, epochs=20)
     # train(gs=16, cost_down=True, epochs=200)

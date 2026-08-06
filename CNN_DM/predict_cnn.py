@@ -18,8 +18,8 @@ CNN-based mosquito noise / DM detection inference.
 新增实验: 在 PRESETS 中加一条即可, 例如:
   PRESETS["my_exp"] = Preset(name="my_exp", gs=8, cost_down=True, is_qat=False)
 
-输出目录结构保持与输入一致:
-  SR_Data/video1/img.bmp → predictions_fp32_gs8/video1/img_out.bmp
+输出目录按输入文件夹分层, 与输入目录结构一一对应:
+  SR_Data/video1/img.bmp → predictions_fp32_gs8/SR_Data/video1/img_out.bmp
 """
 
 import numpy as np
@@ -37,6 +37,7 @@ import feature_compute_reference as fcr
 # ─── Preset: 一行一个实验配置 ───
 class Preset:
     """推理配置预设。model_path / output_dir 自动生成。"""
+
     def __init__(self, name, gs, cost_down=True, is_qat=False, dm_th=0.5, output_dir=None,
                  window_size=9, model_dir="model", model_file=None):
         self.name = name
@@ -152,7 +153,7 @@ def compute_grid_features(y_full, gs):
     def sf_mean(a, factor):
         mask = torch.isnan(a)
         return torch.where(mask, torch.tensor(0.0, device=device), a).sum(dim=-1) * factor // (
-                    (~mask).float().sum(dim=-1).clamp(min=1) * 4)
+                (~mask).float().sum(dim=-1).clamp(min=1) * 4)
 
     def sf_count_lt(a, th):
         mask = torch.isnan(a)
@@ -370,7 +371,8 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, 
     # ─── 调试: 观察指定像素的融合细节 ───
     if observe_points:
         print(f"  ── Observe Points ──")
-        print(f"  {'x':>4} {'y':>4} {'ch':>2} {'orig':>5} {'filt':>5} {'pred':>10} {'out_f32':>12} {'out_u8':>5} {'diff':>4}")
+        print(
+            f"  {'x':>4} {'y':>4} {'ch':>2} {'orig':>5} {'filt':>5} {'pred':>10} {'out_f32':>12} {'out_u8':>5} {'diff':>4}")
         for ox, oy in observe_points:
             if oy >= H or ox >= W:
                 continue
@@ -431,12 +433,14 @@ def run_preset(preset, test_dir=None, observe_points=None):
     bmps.sort(key=lambda x: x[0])
     print(f"  Processing {len(bmps)} images from {test_dir}...\n")
     results = []
+    test_root = Path(test_dir).name  # 输出顶层目录与输入数据集同名
     for bmp_path, sub_dir in bmps:
         t0 = time.time()
         rel = os.path.join(sub_dir, os.path.basename(bmp_path)) if sub_dir != '.' else os.path.basename(bmp_path)
         print(f"  [{rel}]")
         sub = sub_dir if sub_dir != '.' else ''
-        stats = predict_image(model, device, bmp_path, preset, sub_dir=sub, observe_points=observe_points)
+        stats = predict_image(model, device, bmp_path, preset,
+                              sub_dir=os.path.join(test_root, sub), observe_points=observe_points)
         print(f"  [{time.time() - t0:.0f}s]\n")
         if stats is not None:
             results.append(stats)
@@ -536,12 +540,11 @@ def main(test_dir=None):
         all_results[name] = run_preset(PRESETS[name], test_dir=test_dir)
     write_report(test_dir, all_results)
 
-        # run_preset(PRESETS["fp32_gs8"], test_dir="./SR_Data/x2_test",
-        #        observe_points=[(632, 918)])
+    # run_preset(PRESETS["fp32_gs8"], test_dir="./SR_Data/x2_test",
+    #        observe_points=[(632, 918)])
 
 
 if __name__ == "__main__":
-    main()
-    # main("C:\code\py\denoise\scripts\CNN_DM\ICDAR_2019_OCRDataset\TrainImages")
-    # main(test_dir='SR_Data')
+    main(test_dir=os.path.join(SCRIPT_DIR, "test_data"))
+    main(test_dir=os.path.join(SCRIPT_DIR, "SR_data"))
     main(test_dir=os.path.join(SCRIPT_DIR, "val_data"))
