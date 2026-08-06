@@ -18,19 +18,22 @@ CNN-based mosquito noise / DM detection inference.
 新增实验: 在 PRESETS 中加一条即可, 例如:
   PRESETS["my_exp"] = Preset(name="my_exp", gs=8, cost_down=True, is_qat=False)
 
-输出目录按输入文件夹分层, 与输入目录结构一一对应:
-  SR_Data/video1/img.bmp → predictions_fp32_gs8/SR_Data/video1/img_out.bmp
+输出目录 (图像级数据源按 验证集/测试集 分开保存, 划分来自 image_split_gs{gs}.csv):
+  SR_data/img1001.bmp  → predictions_fp32_gs8/val/SR_data/x2/img1001_out.bmp  (img1xxx→x2, img2xxx→x3, img_xxxx→4k)
+  DIV2K/0001.bmp       → predictions_fp32_gs8/test/DIV2K/0001_out.bmp         (直接平铺)
+  test_data/...        → predictions_fp32_gs8/test_data/...                   (patch 级, 不划分)
 """
 
 import numpy as np
 import torch
 import cv2
 import os
+import re
 import sys
 import time
 from pathlib import Path
 
-from dm_cnn import MosquitoDenoiseCNN
+from dm_cnn import MosquitoDenoiseCNN, data_root_from_txt
 import feature_compute_reference as fcr
 
 
@@ -374,6 +377,34 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, 
                 elapsed=time.time() - t_start)
 
 
+def load_image_split(gs=8):
+    """读取 train() 保存的图像级划分 (image_split_gs{gs}.csv)。
+    返回 {图像文件夹相对路径: split}, split ∈ {'val', 'test'}。文件不存在时返回空 dict。"""
+    path = os.path.join(SCRIPT_DIR, f"image_split_gs{gs}.csv")
+    if not os.path.exists(path):
+        return {}
+    split_map = {}
+    with open(path, encoding="utf-8") as f:
+        next(f)  # 跳过 header
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            _, image_dir, split = line.split(",")
+            split_map[image_dir] = split
+    return split_map
+
+
+def group_sr_data(image_name):
+    """SR_data 图像文件夹命名 -> 分组目录: img1xxx->x2, img2xxx->x3, img_xxxx->4k, 其他->''"""
+    m = re.match(r"^img([12])(\d{3})$", image_name)
+    if m:
+        return "x2" if m.group(1) == "1" else "x3"
+    if re.match(r"^img_\d+$", image_name):
+        return "4k"
+    return ""
+
+
 def run_preset(preset, test_dir=None, observe_points=None):
     """加载模型并跑完所有 test 图片。test_dir 可覆盖默认数据集目录。
     observe_points: [(x, y), ...] 调试用，观察指定像素的融合细节。
@@ -413,13 +444,28 @@ def run_preset(preset, test_dir=None, observe_points=None):
     print(f"  Processing {len(bmps)} images from {test_dir}...\n")
     results = []
     test_root = Path(test_dir).name  # 输出顶层目录与输入数据集同名
+    split_map = load_image_split(preset.gs)
+    if split_map:
+        from collections import Counter
+        print(f"  图像级划分 (image_split_gs{preset.gs}.csv): {dict(Counter(split_map.values()))}")
     for bmp_path, sub_dir in bmps:
         t0 = time.time()
         rel = os.path.join(sub_dir, os.path.basename(bmp_path)) if sub_dir != '.' else os.path.basename(bmp_path)
         print(f"  [{rel}]")
         sub = sub_dir if sub_dir != '.' else ''
+        # 图像级数据源: 按 验证集(val)/测试集(test) 分开保存, SR_data 内按命名分组, DIV2K/JPG_data 直接平铺
+        # 其余 (test_data 等) 保持原样
+        rel_img_dir = os.path.relpath(os.path.dirname(bmp_path), SCRIPT_DIR)
+        split = split_map.get(rel_img_dir)
+        if split:
+            parts = rel_img_dir.split(os.sep)
+            source = parts[-2] if len(parts) >= 2 else test_root
+            group = group_sr_data(parts[-1]) if source == "SR_data" else ""
+            sub = os.path.join(split, source, group)
+        else:
+            sub = os.path.join(test_root, sub)
         stats = predict_image(model, device, bmp_path, preset,
-                              sub_dir=os.path.join(test_root, sub), observe_points=observe_points)
+                              sub_dir=sub, observe_points=observe_points)
         print(f"  [{time.time() - t0:.0f}s]\n")
         if stats is not None:
             results.append(stats)
@@ -503,5 +549,7 @@ def main(test_dir=None):
 
 if __name__ == "__main__":
     main(test_dir=os.path.join(SCRIPT_DIR, "test_data"))
-    main(test_dir=os.path.join(SCRIPT_DIR, "SR_data"))
+    # main(test_dir=os.path.join(SCRIPT_DIR, "MNR_Label_GS8_20260805_1900", "SR_data"))
+    main(test_dir=os.path.join(SCRIPT_DIR, data_root_from_txt("grid_8_dataset_paths.txt"), "SR_data"))
     main(test_dir=os.path.join(SCRIPT_DIR, "val_data"))
+    # main()

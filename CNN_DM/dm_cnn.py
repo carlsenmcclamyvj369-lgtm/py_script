@@ -15,7 +15,7 @@ CNN mosquito noise detection — training script.
   train(gs=8,  cost_down=True, epochs=400)
   train(gs=16, cost_down=True, epochs=400)
 
-数据源 (MNR_Label_GS8_20260805_1900) 分源划分:
+数据源 (自动选择最新的 MNR_Label_GS8_* 根目录) 分源划分:
   SR_data / JPG_data / DIV2K: 图像级 8:2 划分 (同一图像的整体 Patch 进同一侧)
   test_data:                   patch 级 8:2 混洗划分
   Train = 图像源 80% + test_data 80%,  Val = 图像源 20% + test_data 20%
@@ -216,6 +216,19 @@ def load_data_dirs(txt_file):
     return data_dirs
 
 
+def data_root_from_txt(txt_file):
+    """从 grid_8_dataset_paths.txt 中提取标注数据根目录名 (如 MNR_Label_GS8_20260806_1640)。"""
+    with open(txt_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            for part in line.replace("\\", "/").split("/"):
+                if part.startswith("MNR_Label_GS8_"):
+                    return part
+    raise ValueError(f"{txt_file} 中未找到 MNR_Label_GS8_* 数据条目")
+
+
 # =========================
 # 5. 以下训练代码仅在直接运行时执行
 # =========================
@@ -230,7 +243,11 @@ def train(gs, cost_down=True, epochs=20):
     DATA_DIR = os.path.dirname(__file__) if '__file__' in dir() else '.'
 
 
-    DATA_ROOT = os.path.join(DATA_DIR, "MNR_Label_GS8_20260805_1900")
+    txt_file = f"grid_{gs}_dataset_paths.txt"
+    DATA_ROOT = os.path.join(DATA_DIR, data_root_from_txt(txt_file))
+    if not os.path.isdir(DATA_ROOT):
+        raise FileNotFoundError(f"数据根目录不存在 (请重新生成 {txt_file}): {DATA_ROOT}")
+    print(f"数据根目录: {DATA_ROOT}")
     IMAGE_LEVEL_SOURCES = ["SR_data", "JPG_data", "DIV2K"]  # 图像级划分 (8:2)
     PATCH_LEVEL_SOURCE = "test_data"                        # patch 级划分 (8:2)
     val_ratio = 0.2
@@ -250,6 +267,17 @@ def train(gs, cost_down=True, epochs=20):
     n_val_images = int(len(image_dirs) * val_ratio)
     val_image_dirs = image_dirs[:n_val_images]
     train_image_dirs = image_dirs[n_val_images:]
+
+    # 保存图像级划分 (供 predict_cnn.py 推理时按 验证集/测试集 分开保存输出)
+    # 注意: 训练时的 train(80%) 即推理观看时的 "test", val(20%) 即 "val"
+    split_path = os.path.join(DATA_DIR, f"image_split_gs{gs}.csv")
+    with open(split_path, "w", encoding="utf-8") as f:
+        f.write("source,image_dir,split\n")
+        for src, img_dir in train_image_dirs:
+            f.write(f"{src},{os.path.relpath(img_dir, DATA_DIR)},test\n")
+        for src, img_dir in val_image_dirs:
+            f.write(f"{src},{os.path.relpath(img_dir, DATA_DIR)},val\n")
+    print(f"图像级划分已保存: {split_path}")
 
     def load_image_list(dir_list):
         """加载图像文件夹列表的 dm / not_dm 数据集"""
