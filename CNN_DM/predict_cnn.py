@@ -39,13 +39,12 @@ class Preset:
     """推理配置预设。model_path / output_dir 自动生成。"""
 
     def __init__(self, name, gs, cost_down=True, is_qat=False, dm_th=0.5, output_dir=None,
-                 window_size=9, model_dir="model", model_file=None):
+                 model_dir="model", model_file=None):
         self.name = name
         self.gs = gs
         self.cost_down = cost_down
         self.is_qat = is_qat
         self.dm_th = dm_th
-        self.window_size = window_size
         self.model_dir = model_dir
         self.model_file = model_file
         self._output_dir = output_dir
@@ -66,11 +65,6 @@ class Preset:
         return os.path.join(SCRIPT_DIR, self.model_dir, f"mosquito_denoise_cnn{self.suffix}_grid_{self.gs}.pth")
 
     @property
-    def pad(self):
-        """CNN 每边 padding: 窗口 w 对应 (w-1)/2"""
-        return (self.window_size - 1) // 2
-
-    @property
     def output_dir(self):
         if self._output_dir is not None:
             return self._output_dir
@@ -82,24 +76,8 @@ class Preset:
 
 
 PRESETS = {
-    # "fp32_gs8":  Preset(name="fp32_gs8",  gs=8,  cost_down=True, is_qat=False),
+    "fp32_gs8":  Preset(name="fp32_gs8",  gs=8,  cost_down=True, is_qat=False),
     # "fp32_full_gs8":  Preset(name="fp32_full_gs8",  gs=8,  cost_down=False, is_qat=False),
-    # 窗口消融推理模型 (model_window/)
-    # "win_1x1": Preset(name="win_1x1", gs=8, cost_down=True, is_qat=False,
-    #                   window_size=1, model_dir="model_window",
-    #                   model_file="model_window_1x1.pth"),
-    # "win_3x3": Preset(name="win_3x3", gs=8, cost_down=True, is_qat=False,
-    #                   window_size=3, model_dir="model_window",
-    #                   model_file="model_window_3x3.pth"),
-    "win_5x5": Preset(name="win_5x5", gs=8, cost_down=True, is_qat=False,
-                      window_size=5, model_dir="model_window",
-                      model_file="model_window_5x5.pth"),
-    "win_7x7": Preset(name="win_7x7", gs=8, cost_down=True, is_qat=False,
-                      window_size=7, model_dir="model_window",
-                      model_file="model_window_7x7.pth"),
-    "win_9x9": Preset(name="win_9x9", gs=8, cost_down=True, is_qat=False,
-                      window_size=9, model_dir="model_window",
-                      model_file="model_window_9x9.pth"),
     # "fp32_gs16": Preset(name="fp32_gs16", gs=16, cost_down=True, is_qat=False),
     # "qat_gs8":   Preset(name="qat_gs8",   gs=8,  cost_down=True, is_qat=True),
     # "qat_gs16":  Preset(name="qat_gs16",  gs=16, cost_down=True, is_qat=True),
@@ -110,6 +88,7 @@ TEST_DIR = os.path.join(SCRIPT_DIR, "test_data")
 # TEST_DIR = os.path.join(SCRIPT_DIR, "SR_Data\\x2_test")
 LOW_VAR_TH = 20
 HIGH_VAR_TH = 128
+PAD = 4  # CNN 固定 9x9 输入, 每边 padding (9-1)/2
 
 
 def get_block(map2d, bi, bj, gs):
@@ -308,7 +287,7 @@ def predict_image(model, device, bmp_path, preset, sub_dir="", save_debug=True, 
     print("  Assembling neighborhoods & predicting...", end=" ", flush=True)
     t0 = time.time()
 
-    pad = preset.pad  # 窗口 w → 每边 pad (w-1)/2
+    pad = PAD  # CNN 固定 9x9 输入
     grid_pad = np.pad(grid, ((pad, pad), (pad, pad), (0, 0)), mode='edge')
     grid_norm = np.clip(grid_pad / 255, 0, 1)
 
@@ -415,7 +394,7 @@ def run_preset(preset, test_dir=None, observe_points=None):
         #     weights_only=False
         # )
     else:
-        model = MosquitoDenoiseCNN(cost_down=preset.cost_down, window_size=preset.window_size).to(device)
+        model = MosquitoDenoiseCNN(cost_down=preset.cost_down).to(device)
         model.load_state_dict(torch.load(preset.model_path, map_location=device), strict=False)
     model.eval()
     print(f"  Model: {preset.model_path}")
@@ -499,28 +478,6 @@ def write_report(test_dir, all_results):
                 cells.append("-")
         lines.append(f"| {stem} | " + " | ".join(cells) + " |")
     lines.append("")
-
-    # 相对最大窗口的差异 (仅当存在多个窗口 preset 时)
-    max_win = max(presets, key=lambda n: PRESETS[n].window_size if n in PRESETS else 0)
-    if len(presets) > 1:
-        lines.append(f"### 各 Preset 相对 {max_win} 的 DM 数差异")
-        lines.append("")
-        header = "| 图片 | " + " | ".join(presets) + " |"
-        sep = "|------|" + "------|" * len(presets)
-        lines.append(header)
-        lines.append(sep)
-        base_map = {r['stem']: r['dm_count'] for r in all_results[max_win]}
-        for stem in image_order:
-            base = base_map.get(stem)
-            cells = []
-            for name in presets:
-                found = [r for r in all_results[name] if r['stem'] == stem]
-                if found and base is not None:
-                    cells.append(f"{found[0]['dm_count'] - base:+d}")
-                else:
-                    cells.append("-")
-            lines.append(f"| {stem} | " + " | ".join(cells) + " |")
-        lines.append("")
 
     report_path = os.path.join(SCRIPT_DIR, f"inference_report_{Path(test_dir).name}.md")
     is_new = not os.path.exists(report_path)

@@ -100,7 +100,7 @@ def normalize_features(df, features_list, gs=8):
 #    每81行 -> 一个 9x9 patch
 # =========================
 class MosquitoPatchDataset(Dataset):
-    def __init__(self, csv_path, label, patch_size=9, gs=8, window_size=None):
+    def __init__(self, csv_path, label, patch_size=9, gs=8):
         df = pd.read_csv(csv_path)
         # 兼容你之前写的列名
         rename_map = {
@@ -125,16 +125,6 @@ class MosquitoPatchDataset(Dataset):
         x = x.reshape(num_patches, patch_size, patch_size, len(features_list))
         x = np.transpose(x, (0, 3, 1, 2))
 
-        # ─── 窗口消融: 中心裁剪 ───
-        # 中心 Patch 固定不变, 只保留中心 window_size x window_size
-        # (模型侧用 1x1 conv 替代部分 3x3 conv, 无需补零)
-        if window_size is not None:
-            if window_size > patch_size or (patch_size - window_size) % 2 != 0:
-                raise ValueError(f"window_size={window_size} 无效, 需为 <= {patch_size} 的奇数")
-            if window_size < patch_size:
-                off = (patch_size - window_size) // 2
-                x = x[:, :, off:off + window_size, off:off + window_size]
-
         self.x = torch.tensor(x, dtype=torch.float32)
         self.y = torch.full((num_patches, 1), float(label), dtype=torch.float32)
         print(f"{csv_path}: rows={num_rows}, patches={num_patches}, x={self.x.shape}")
@@ -151,29 +141,21 @@ class MosquitoPatchDataset(Dataset):
 #    用 cost_down=True 去掉 BN + sigmoid → ReLU+Clip
 # =========================
 class MosquitoDenoiseCNN(nn.Module):
-    def __init__(self, cost_down=True, window_size=9):
+    def __init__(self, cost_down=True):
         super(MosquitoDenoiseCNN, self).__init__()
         self.cost_down = cost_down
-        self.window_size = window_size
         self.debug = False
-        # 窗口消融: 保持 4 层卷积结构, 按窗口大小用 1x1 conv 替换部分 3x3 conv,
-        # 避免 padding。每个 3x3 conv 减小 2 像素, 从 window_size 到 1 需 (w-1)/2 个。
-        if window_size not in (1, 3, 5, 7, 9):
-            raise ValueError(f"window_size={window_size} 无效, 需为 1/3/5/7/9")
-        n3 = (window_size - 1) // 2
-        kernels = [3] * n3 + [1] * (4 - n3)
-        print("kernels: ", kernels)
         if cost_down:
-            self.conv1 = nn.Conv2d(16, 32, kernel_size=kernels[0], padding=0)
-            self.conv2 = nn.Conv2d(32, 16, kernel_size=kernels[1], padding=0)
-            self.conv3 = nn.Conv2d(16, 16, kernel_size=kernels[2], padding=0)
-            self.conv4 = nn.Conv2d(16, 1, kernel_size=kernels[3], padding=0)
+            self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
+            self.conv2 = nn.Conv2d(32, 16, kernel_size=3, padding=0)
+            self.conv3 = nn.Conv2d(16, 16, kernel_size=3, padding=0)
+            self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
             self._init_weights()
         else:
-            self.conv1 = nn.Conv2d(16, 32, kernel_size=kernels[0], padding=0)
-            self.conv2 = nn.Conv2d(32, 64, kernel_size=kernels[1], padding=0)
-            self.conv3 = nn.Conv2d(64, 16, kernel_size=kernels[2], padding=0)
-            self.conv4 = nn.Conv2d(16, 1, kernel_size=kernels[3], padding=0)
+            self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=0)
+            self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=0)
+            self.conv3 = nn.Conv2d(64, 16, kernel_size=3, padding=0)
+            self.conv4 = nn.Conv2d(16, 1, kernel_size=3, padding=0)
             # self.bn1 = nn.BatchNorm2d(32)
             # self.bn2 = nn.BatchNorm2d(64)
             # self.bn3 = nn.BatchNorm2d(16)
