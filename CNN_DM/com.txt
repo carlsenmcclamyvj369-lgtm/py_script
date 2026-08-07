@@ -1,0 +1,12 @@
+  dm_cnn.py (training)
+  - Per-source train/val split: image-level 8:2 for SR_data/JPG_data/DIV2K (whole image folder stays on one side),
+  patch-level 8:2 for test_data
+  - Data root auto-detected from grid_8_dataset_paths.txt (no hardcoded timestamp paths)
+  - Saves image_split_gs8.csv (test=80% / val=20%) for inference-side grouping
+
+  predict_cnn.py (inference)
+  - add preset control
+  - Outputs organized by: dataset → val/test split → source, with SR_data grouped into x2/x3/4k folders
+  - Reports now append a "Run" section per execution instead of overwriting
+
+

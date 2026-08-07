@@ -548,8 +548,9 @@ def main(test_dir=None):
 
 
 if __name__ == "__main__":
-    main(test_dir=os.path.join(SCRIPT_DIR, "test_data"))
+    # main(test_dir=os.path.join(SCRIPT_DIR, "test_data"))
     # main(test_dir=os.path.join(SCRIPT_DIR, "MNR_Label_GS8_20260805_1900", "SR_data"))
     main(test_dir=os.path.join(SCRIPT_DIR, data_root_from_txt("grid_8_dataset_paths.txt"), "SR_data"))
-    main(test_dir=os.path.join(SCRIPT_DIR, "val_data"))
+    # main(test_dir=os.path.join(SCRIPT_DIR, "val_data"))
+    # main(test_dir=os.path.join(SCRIPT_DIR, "C:\code\py\CNN_MNR_Data\DIV2K_50_150"))
     # main()
